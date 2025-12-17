@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to DOCX Converter</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .converter-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            margin-top: 50px;
+            max-width: 800px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 64px;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn-convert {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 40px;
+            font-size: 18px;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-convert:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            color: white;
+        }
+
+        .btn-convert:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-container {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .progress {
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+        }
+
+        .status-message {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .file-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .download-btn {
+            background: #28a745;
+            border: none;
+            color: white;
+            padding: 10px 30px;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            color: white;
+        }
+
+        .title-icon {
+            font-size: 48px;
+            color: #667eea;
+            margin-right: 15px;
+        }
+
+        .features {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #eee;
+        }
+
+        .feature {
+            text-align: center;
+            flex: 1;
+        }
+
+        .feature i {
+            font-size: 32px;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="converter-container">
+            <div class="text-center mb-4">
+                <h1 class="d-inline-flex align-items-center">
+                    <i class="fas fa-file-pdf title-icon"></i>
+                    PDF to DOCX Converter
+                </h1>
+                <p class="text-muted mt-2">快速、简单、安全的PDF转DOCX在线转换工具</p>
+            </div>
+
+            <div class="upload-area" id="uploadArea">
+                <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                <h3>拖拽PDF文件到这里</h3>
+                <p class="text-muted">或者点击选择文件</p>
+                <button type="button" class="btn btn-outline-primary btn-lg">
+                    <i class="fas fa-folder-open"></i> 选择文件
+                </button>
+                <input type="file" id="fileInput" class="file-input" accept=".pdf">
+                <p class="text-muted mt-3 mb-0">支持最大 16MB 的PDF文件</p>
+            </div>
+
+            <div class="file-info hidden" id="fileInfo">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fas fa-file-pdf text-danger"></i>
+                        <span id="fileName" class="fw-bold"></span>
+                        <span id="fileSize" class="text-muted ms-2"></span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" id="removeFile">
+                        <i class="fas fa-times"></i> 移除
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <button type="button" class="btn-convert" id="convertBtn" disabled>
+                    <i class="fas fa-magic"></i> 开始转换
+                </button>
+            </div>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress">
+                    <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%"></div>
+                </div>
+                <div class="status-message info" id="statusMessage">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="statusText">准备转换...</span>
+                </div>
+            </div>
+
+            <div class="text-center hidden" id="downloadContainer">
+                <h4 class="text-success mb-3">
+                    <i class="fas fa-check-circle"></i> 转换完成！
+                </h4>
+                <button type="button" class="download-btn" id="downloadBtn">
+                    <i class="fas fa-download"></i> 下载DOCX文件
+                </button>
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <i class="fas fa-bolt"></i>
+                    <h6>快速转换</h6>
+                    <p class="text-muted small">秒级处理速度</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-shield-alt"></i>
+                    <h6>安全可靠</h6>
+                    <p class="text-muted small">文件自动清理</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-file-alt"></i>
+                    <h6>保持格式</h6>
+                    <p class="text-muted small">保留原始布局</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let selectedFile = null;
+        let currentTaskId = null;
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const removeFileBtn = document.getElementById('removeFile');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const statusMessage = document.getElementById('statusMessage');
+        const statusText = document.getElementById('statusText');
+        const downloadContainer = document.getElementById('downloadContainer');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // Upload area click
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFileSelect(file);
+            }
+        });
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                handleFileSelect(file);
+            } else {
+                alert('请选择PDF文件');
+            }
+        });
+
+        // Remove file
+        removeFileBtn.addEventListener('click', () => {
+            resetUpload();
+        });
+
+        // Convert button
+        convertBtn.addEventListener('click', () => {
+            if (selectedFile) {
+                convertFile();
+            }
+        });
+
+        // Download button
+        downloadBtn.addEventListener('click', () => {
+            if (currentTaskId) {
+                window.location.href = `/api/download/${currentTaskId}`;
+                setTimeout(() => {
+                    cleanupFiles();
+                }, 1000);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (file.type !== 'application/pdf') {
+                alert('请选择PDF文件');
+                return;
+            }
+
+            if (file.size > 16 * 1024 * 1024) {
+                alert('文件大小不能超过16MB');
+                return;
+            }
+
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileSize.textContent = `(${formatFileSize(file.size)})`;
+
+            uploadArea.classList.add('hidden');
+            fileInfo.classList.remove('hidden');
+            convertBtn.disabled = false;
+
+            resetProgress();
+        }
+
+        function resetUpload() {
+            selectedFile = null;
+            fileInput.value = '';
+            uploadArea.classList.remove('hidden');
+            fileInfo.classList.add('hidden');
+            convertBtn.disabled = true;
+            resetProgress();
+        }
+
+        function resetProgress() {
+            progressContainer.classList.add('hidden');
+            downloadContainer.classList.add('hidden');
+            statusMessage.className = 'status-message info';
+        }
+
+        async function convertFile() {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            convertBtn.disabled = true;
+            convertBtn.innerHTML = '<span class="loading-spinner"></span>上传中...';
+            progressContainer.classList.remove('hidden');
+            updateStatus('正在上传文件...', 'info', 0);
+
+            try {
+                const response = await fetch('/api/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    currentTaskId = result.task_id;
+                    updateStatus('文件上传成功，开始转换...', 'info', 10);
+                    pollConversionStatus();
+                } else {
+                    throw new Error(result.error || '上传失败');
+                }
+            } catch (error) {
+                updateStatus(`上传失败: ${error.message}`, 'error', 0);
+                convertBtn.disabled = false;
+                convertBtn.innerHTML = '<i class="fas fa-magic"></i> 开始转换';
+            }
+        }
+
+        async function pollConversionStatus() {
+            if (!currentTaskId) return;
+
+            try {
+                const response = await fetch(`/api/status/${currentTaskId}`);
+                const status = await response.json();
+
+                if (response.ok) {
+                    if (status.status === 'converting') {
+                        updateStatus(status.message, 'info', status.progress);
+                        setTimeout(pollConversionStatus, 1000);
+                    } else if (status.status === 'completed') {
+                        updateStatus(status.message, 'success', 100);
+                        convertBtn.innerHTML = '<i class="fas fa-check"></i> 转换完成';
+                        downloadContainer.classList.remove('hidden');
+                    } else if (status.status === 'error') {
+                        updateStatus(status.message, 'error', status.progress || 0);
+                        convertBtn.disabled = false;
+                        convertBtn.innerHTML = '<i class="fas fa-magic"></i> 重新转换';
+                    }
+                }
+            } catch (error) {
+                updateStatus('获取状态失败', 'error', 0);
+                convertBtn.disabled = false;
+                convertBtn.innerHTML = '<i class="fas fa-magic"></i> 重新转换';
+            }
+        }
+
+        function updateStatus(message, type, progress) {
+            statusText.textContent = message;
+            statusMessage.className = `status-message ${type}`;
+            progressBar.style.width = `${progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
+        }
+
+        async function cleanupFiles() {
+            if (currentTaskId) {
+                try {
+                    await fetch(`/api/cleanup/${currentTaskId}`, {
+                        method: 'DELETE'
+                    });
+                } catch (error) {
+                    console.error('Cleanup failed:', error);
+                }
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>
