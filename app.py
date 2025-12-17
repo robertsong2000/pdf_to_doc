@@ -124,12 +124,21 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
                 try:
                     if 'cv' in locals():
                         cv.close()
-                    # Re-initialize with strict=False to skip problematic checks
-                    cv = Converter(pdf_path)
-                    # Try conversion with disabled layout analysis
-                    cv.convert(output_path, start=0, end=None, multi_processing=False)
+
+                    # 设置环境变量以减少兼容性问题
+                    os.environ['PDF2DOCV_SKIP_CHECK'] = '1'
+
+                    # Re-initialize with different parameters
+                    cv = Converter(pdf_path, strict=False)
+
+                    # Try conversion with minimal layout analysis
+                    cv.convert(output_path, start=0, end=None,
+                              multi_processing=False,
+                              debug=False,
+                              keep_layout=True)
                     cv.close()
                     print(f"Alternative pdf2docx conversion completed for {pdf_path}")
+
                 except Exception as fallback_error:
                     print(f"Fallback conversion also failed: {str(fallback_error)}")
                     raise Exception(f"PDF conversion failed due to compatibility issue: {str(ae)}")
@@ -263,6 +272,7 @@ def download_file(task_id):
             )
 
     return jsonify({'error': 'File not found on server'}), 404
+
 
 @app.route('/api/cleanup/<task_id>', methods=['DELETE'])
 def cleanup_files(task_id):
