@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF to DOCX Converter</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -20,6 +18,8 @@
             padding: 40px;
             margin-top: 50px;
             max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .upload-area {
@@ -75,20 +75,57 @@
             transform: none;
         }
 
+        .btn-outline-primary {
+            color: #667eea;
+            border-color: #667eea;
+        }
+
+        .btn-outline-primary:hover {
+            background-color: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
         .progress-container {
-            margin-top: 30px;
+            margin-top: 20px;
             display: none;
         }
 
+        .progress-header {
+            margin-bottom: 10px;
+        }
+
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        .progress-percentage {
+            font-size: 1.2em;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .progress-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+
         .progress {
-            height: 8px;
-            border-radius: 4px;
+            height: 12px;
+            border-radius: 6px;
             overflow: hidden;
+            background-color: #e9ecef;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
         }
 
         .progress-bar {
             background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            transition: width 0.3s ease;
+            transition: width 0.5s ease;
+            height: 100%;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
         }
 
         .status-message {
@@ -139,6 +176,29 @@
             color: white;
         }
 
+        .btn-outline-danger {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        .btn-outline-danger:hover {
+            background-color: #dc3545;
+            border-color: #dc3545;
+            color: white;
+        }
+
+        .btn-lg {
+            padding: 0.5rem 1rem;
+            font-size: 1.25rem;
+            border-radius: 0.3rem;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            border-radius: 0.2rem;
+        }
+
         .title-icon {
             font-size: 48px;
             color: #667eea;
@@ -183,6 +243,79 @@
         .hidden {
             display: none !important;
         }
+
+        /* Basic button styles */
+        button {
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* Text utility classes */
+        .text-muted {
+            color: #6c757d !important;
+        }
+
+        .text-center {
+            text-align: center !important;
+        }
+
+        .text-success {
+            color: #28a745 !important;
+        }
+
+        .text-danger {
+            color: #dc3545 !important;
+        }
+
+        .mb-2 {
+            margin-bottom: 0.5rem !important;
+        }
+
+        .mb-3 {
+            margin-bottom: 1rem !important;
+        }
+
+        .mb-4 {
+            margin-bottom: 1.5rem !important;
+        }
+
+        .mt-2 {
+            margin-top: 0.5rem !important;
+        }
+
+        .mt-3 {
+            margin-top: 1rem !important;
+        }
+
+        .mt-4 {
+            margin-top: 1.5rem !important;
+        }
+
+        .ms-2 {
+            margin-left: 0.5rem !important;
+        }
+
+        /* Flex utilities */
+        .d-inline-flex {
+            display: inline-flex !important;
+        }
+
+        .d-flex {
+            display: flex !important;
+        }
+
+        .justify-content-between {
+            justify-content: space-between !important;
+        }
+
+        .align-items-center {
+            align-items: center !important;
+        }
+
+        .fw-bold {
+            font-weight: bold !important;
+        }
     </style>
 </head>
 <body>
@@ -190,85 +323,90 @@
         <div class="converter-container">
             <div class="text-center mb-4">
                 <h1 class="d-inline-flex align-items-center">
-                    <i class="fas fa-file-pdf title-icon"></i>
+                    <span class="title-icon">📄</span>
                     PDF to DOCX Converter
                 </h1>
                 <p class="text-muted mt-2">快速、简单、安全的PDF转DOCX在线转换工具</p>
             </div>
 
             <div class="upload-area" id="uploadArea">
-                <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                <div class="upload-icon">☁️</div>
                 <h3>拖拽PDF文件到这里</h3>
                 <p class="text-muted">或者点击选择文件</p>
-                <button type="button" class="btn btn-outline-primary btn-lg">
-                    <i class="fas fa-folder-open"></i> 选择文件
+                <button type="button" class="btn-outline-primary btn-lg">
+                    📁 选择文件
                 </button>
                 <input type="file" id="fileInput" class="file-input" accept=".pdf">
-                <p class="text-muted mt-3 mb-0">支持最大 16MB 的PDF文件</p>
+                <p class="text-muted mt-3 mb-0">支持最大 80MB 的PDF文件</p>
             </div>
 
             <div class="file-info hidden" id="fileInfo">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <i class="fas fa-file-pdf text-danger"></i>
+                        <span class="text-danger">📄</span>
                         <span id="fileName" class="fw-bold"></span>
                         <span id="fileSize" class="text-muted ms-2"></span>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger" id="removeFile">
-                        <i class="fas fa-times"></i> 移除
+                    <button type="button" class="btn-outline-danger btn-sm" id="removeFile">
+                        ✕ 移除
                     </button>
                 </div>
             </div>
 
             <div class="text-center mt-4">
                 <button type="button" class="btn-convert" id="convertBtn" disabled>
-                    <i class="fas fa-magic"></i> 开始转换
+                    ✨ 开始转换
                 </button>
             </div>
 
             <div class="progress-container" id="progressContainer">
+                <div class="progress-header">
+                    <div class="progress-text">
+                        <span class="progress-percentage" id="progressPercentage">0%</span>
+                        <span class="progress-label">转换进度</span>
+                    </div>
+                </div>
                 <div class="progress">
                     <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%"></div>
                 </div>
                 <div class="status-message info" id="statusMessage">
-                    <i class="fas fa-info-circle"></i>
-                    <span id="statusText">准备转换...</span>
+                    ℹ️ <span id="statusText">准备转换...</span>
                 </div>
             </div>
 
             <div class="text-center hidden" id="downloadContainer">
                 <h4 class="text-success mb-3">
-                    <i class="fas fa-check-circle"></i> 转换完成！
+                    ✅ 转换完成！
                 </h4>
                 <button type="button" class="download-btn" id="downloadBtn">
-                    <i class="fas fa-download"></i> 下载DOCX文件
+                    ⬇️ 下载DOCX文件
                 </button>
             </div>
 
             <div class="features">
                 <div class="feature">
-                    <i class="fas fa-bolt"></i>
+                    <div>⚡</div>
                     <h6>快速转换</h6>
-                    <p class="text-muted small">秒级处理速度</p>
+                    <p class="text-muted mb-0">秒级处理速度</p>
                 </div>
                 <div class="feature">
-                    <i class="fas fa-shield-alt"></i>
+                    <div>🔒</div>
                     <h6>安全可靠</h6>
-                    <p class="text-muted small">文件自动清理</p>
+                    <p class="text-muted mb-0">文件自动清理</p>
                 </div>
                 <div class="feature">
-                    <i class="fas fa-file-alt"></i>
+                    <div>📝</div>
                     <h6>保持格式</h6>
-                    <p class="text-muted small">保留原始布局</p>
+                    <p class="text-muted mb-0">保留原始布局</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let selectedFile = null;
         let currentTaskId = null;
+        let isConverting = false;
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -347,8 +485,8 @@
                 return;
             }
 
-            if (file.size > 16 * 1024 * 1024) {
-                alert('文件大小不能超过16MB');
+            if (file.size > 80 * 1024 * 1024) {
+                alert('文件大小不能超过80MB');
                 return;
             }
 
@@ -369,6 +507,7 @@
             uploadArea.classList.remove('hidden');
             fileInfo.classList.add('hidden');
             convertBtn.disabled = true;
+            isConverting = false;
             resetProgress();
         }
 
@@ -376,38 +515,80 @@
             progressContainer.classList.add('hidden');
             downloadContainer.classList.add('hidden');
             statusMessage.className = 'status-message info';
+
+            // Clear detailed status elements
+            const stepIndicator = document.getElementById('stepIndicator');
+            const progressPercent = document.getElementById('progressPercent');
+            if (stepIndicator) stepIndicator.remove();
+            if (progressPercent) progressPercent.remove();
         }
 
         async function convertFile() {
-            if (!selectedFile) return;
+            if (!selectedFile || isConverting) return;
+
+            isConverting = true;
 
             const formData = new FormData();
             formData.append('file', selectedFile);
 
             convertBtn.disabled = true;
-            convertBtn.innerHTML = '<span class="loading-spinner"></span>上传中...';
+            convertBtn.innerHTML = '<span class="loading-spinner"></span>处理中...';
             progressContainer.classList.remove('hidden');
-            updateStatus('正在上传文件...', 'info', 0);
+
+            // 显示详细的初始状态
+            updateDetailedStatus({
+                message: '📤 正在上传文件到服务器...',
+                progress: 5,
+                step: 'uploading',
+                status: 'converting'
+            });
 
             try {
+                // 显示上传进行中的状态
+                updateDetailedStatus({
+                    message: '📡 正在传输文件数据...',
+                    progress: 8,
+                    step: 'transferring',
+                    status: 'converting'
+                });
+
                 const response = await fetch('/api/convert', {
                     method: 'POST',
                     body: formData
+                });
+
+                // 上传完成，等待服务器处理
+                updateDetailedStatus({
+                    message: '⏳ 服务器正在准备转换...',
+                    progress: 10,
+                    step: 'preparing',
+                    status: 'converting'
                 });
 
                 const result = await response.json();
 
                 if (response.ok) {
                     currentTaskId = result.task_id;
-                    updateStatus('文件上传成功，开始转换...', 'info', 10);
+                    updateDetailedStatus({
+                        message: '✅ 文件上传成功，启动转换引擎...',
+                        progress: 15,
+                        step: 'upload_complete',
+                        status: 'converting'
+                    });
                     pollConversionStatus();
                 } else {
                     throw new Error(result.error || '上传失败');
                 }
             } catch (error) {
-                updateStatus(`上传失败: ${error.message}`, 'error', 0);
+                updateDetailedStatus({
+                    message: `❌ 上传失败: ${error.message}`,
+                    progress: 0,
+                    step: 'error',
+                    status: 'error'
+                });
                 convertBtn.disabled = false;
-                convertBtn.innerHTML = '<i class="fas fa-magic"></i> 开始转换';
+                convertBtn.innerHTML = '✨ 开始转换';
+                isConverting = false;
             }
         }
 
@@ -420,22 +601,40 @@
 
                 if (response.ok) {
                     if (status.status === 'converting') {
-                        updateStatus(status.message, 'info', status.progress);
-                        setTimeout(pollConversionStatus, 1000);
+                        updateDetailedStatus(status);
+                        
+                        // Adjust polling frequency based on current step
+                        let pollInterval = 1000; // Default 1 second
+                        if (status.step === 'processing_pages' || status.step === 'processing_pages_fallback') {
+                            pollInterval = 500; // More frequent updates during page processing
+                        }
+                        
+                        setTimeout(pollConversionStatus, pollInterval);
                     } else if (status.status === 'completed') {
-                        updateStatus(status.message, 'success', 100);
-                        convertBtn.innerHTML = '<i class="fas fa-check"></i> 转换完成';
-                        downloadContainer.classList.remove('hidden');
+                    updateDetailedStatus(status);
+                    statusMessage.className = 'status-message success';
+                    convertBtn.innerHTML = '✅ 转换完成';
+                    downloadContainer.classList.remove('hidden');
+                    isConverting = false;
+                    
+                    // Clean up page progress display
+                    const pageProgress = document.getElementById('pageProgress');
+                    if (pageProgress) {
+                        pageProgress.remove();
+                    }
                     } else if (status.status === 'error') {
-                        updateStatus(status.message, 'error', status.progress || 0);
+                        updateDetailedStatus(status);
+                        statusMessage.className = 'status-message error';
                         convertBtn.disabled = false;
-                        convertBtn.innerHTML = '<i class="fas fa-magic"></i> 重新转换';
+                        convertBtn.innerHTML = '✨ 重新转换';
+                        isConverting = false;
                     }
                 }
             } catch (error) {
                 updateStatus('获取状态失败', 'error', 0);
                 convertBtn.disabled = false;
-                convertBtn.innerHTML = '<i class="fas fa-magic"></i> 重新转换';
+                convertBtn.innerHTML = '✨ 重新转换';
+                isConverting = false;
             }
         }
 
@@ -444,6 +643,103 @@
             statusMessage.className = `status-message ${type}`;
             progressBar.style.width = `${progress}%`;
             progressBar.setAttribute('aria-valuenow', progress);
+        }
+
+        function updateDetailedStatus(data) {
+            const { message, progress, step, status } = data;
+
+            statusText.textContent = message;
+            statusMessage.className = `status-message ${status === 'error' ? 'error' : 'info'}`;
+            progressBar.style.width = `${progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
+
+            // Update main progress percentage display
+            const progressPercentage = document.getElementById('progressPercentage');
+            if (progressPercentage) {
+                progressPercentage.textContent = `${progress}%`;
+            }
+
+            // Add step indicator
+            const stepIndicator = document.getElementById('stepIndicator');
+            if (!stepIndicator) {
+                const stepDiv = document.createElement('div');
+                stepDiv.id = 'stepIndicator';
+                stepDiv.style.fontSize = '0.9em';
+                stepDiv.style.color = '#666';
+                stepDiv.style.marginTop = '5px';
+                statusMessage.appendChild(stepDiv);
+            }
+
+            const stepElement = document.getElementById('stepIndicator');
+            if (stepElement && step) {
+                // Show step description based on step name
+                const stepDescriptions = {
+                    'uploading': '📤 正在上传文件',
+                    'transferring': '📡 正在传输数据',
+                    'preparing': '⏳ 服务器准备中',
+                    'upload_complete': '✅ 文件上传成功',
+                    'initialization': '🚀 开始初始化',
+                    'initializing': '🔧 设置转换器',
+                    'opening_document': '📂 打开PDF文档',
+                    'analyzing_document': '🔍 分析文档结构',
+                    'extracting_content': '📝 提取内容元素',
+                    'converting_elements': '🔄 转换PDF元素',
+                    'preserving_formatting': '🎨 保留格式布局',
+                    'generating_docx': '📄 生成Word文档',
+                    'processing_pages': '📖 处理PDF页面',
+                    'processing_pages_fallback': '📖 处理PDF页面 (备用模式)',
+                    'finalizing': '✨ 完成处理',
+                    'completed': '✅ 转换完成',
+                    'error': '❌ 发生错误'
+                };
+
+                stepElement.textContent = stepDescriptions[step] || `Step: ${step}`;
+                
+                // Show page progress if available
+                if (data.current_page && data.total_pages) {
+                    const pageProgress = document.getElementById('pageProgress');
+                    if (!pageProgress) {
+                        const pageDiv = document.createElement('div');
+                        pageDiv.id = 'pageProgress';
+                        pageDiv.style.fontSize = '0.85em';
+                        pageDiv.style.color = '#555';
+                        pageDiv.style.marginTop = '3px';
+                        pageDiv.style.fontWeight = 'bold';
+                        statusMessage.appendChild(pageDiv);
+                    }
+                    
+                    const pageElement = document.getElementById('pageProgress');
+                    if (pageElement) {
+                        // Create a mini progress bar for pages
+                        const pagePercent = Math.round((data.current_page / data.total_pages) * 100);
+                        let etaHtml = '';
+                        if (data.eta) {
+                            etaHtml = `<div style="margin-top: 3px; color: #6c757d;">${data.eta}</div>`;
+                        }
+                        pageElement.innerHTML = `
+                            <div>页面进度: ${data.current_page} / ${data.total_pages} (${pagePercent}%)</div>
+                            <div style="background-color: #e9ecef; border-radius: 4px; height: 6px; margin-top: 3px; width: 100%;">
+                                <div style="background-color: #28a745; height: 100%; border-radius: 4px; width: ${pagePercent}%; transition: width 0.3s;"></div>
+                            </div>
+                            ${etaHtml}
+                        `;
+                    }
+                }
+            }
+
+            // Add progress percentage in status message (smaller one)
+            const progressElement = document.getElementById('progressPercent');
+            if (progressElement) {
+                progressElement.textContent = `${progress}%`;
+            } else {
+                const progressDiv = document.createElement('div');
+                progressDiv.id = 'progressPercent';
+                progressDiv.style.fontSize = '0.8em';
+                progressDiv.style.fontWeight = 'bold';
+                progressDiv.style.marginTop = '5px';
+                progressDiv.textContent = `${progress}%`;
+                statusMessage.appendChild(progressDiv);
+            }
         }
 
         async function cleanupFiles() {

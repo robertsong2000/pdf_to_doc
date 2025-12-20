@@ -51,6 +51,7 @@ def fix_pdf2docx_compatibility():
 
 def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
     """Background task for PDF conversion"""
+    start_time = time.time()
     try:
         conversion_status[task_id] = {
             'status': 'converting',
@@ -110,7 +111,29 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
             conversion_status[task_id]['message'] = 'Generating Word document structure...'
             conversion_status[task_id]['step'] = 'generating_docx'
 
-            # Perform conversion
+            # Perform conversion with progress tracking
+            def progress_callback(page, total):
+                # Update progress during conversion (50% to 80% range)
+                if total > 0:
+                    page_progress = 50 + int((page / total) * 30)  # Map page progress to 50-80% range
+                    conversion_status[task_id]['progress'] = page_progress
+                    conversion_status[task_id]['message'] = f'处理页面 {page}/{total}...'
+                    conversion_status[task_id]['step'] = 'processing_pages'
+                    conversion_status[task_id]['current_page'] = page
+                    conversion_status[task_id]['total_pages'] = total
+                    
+                    # Calculate estimated time remaining
+                    elapsed_time = time.time() - start_time
+                    if page > 0:
+                        avg_time_per_page = elapsed_time / page
+                        remaining_pages = total - page
+                        eta_seconds = avg_time_per_page * remaining_pages
+                        conversion_status[task_id]['eta'] = f"预计剩余时间: {int(eta_seconds)}秒"
+            
+            # Set progress callback if supported
+            if hasattr(cv, 'set_progress_callback'):
+                cv.set_progress_callback(progress_callback)
+            
             cv.convert(output_path, start=0, end=None)
             cv.close()
 
@@ -131,7 +154,29 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
                     # Re-initialize with different parameters
                     cv = Converter(pdf_path, strict=False)
 
-                    # Try conversion with minimal layout analysis
+                    # Try conversion with minimal layout analysis and progress tracking
+                    def fallback_progress_callback(page, total):
+                        # Update progress during conversion (55% to 80% range)
+                        if total > 0:
+                            page_progress = 55 + int((page / total) * 25)  # Map page progress to 55-80% range
+                            conversion_status[task_id]['progress'] = page_progress
+                            conversion_status[task_id]['message'] = f'处理页面 {page}/{total} (备用模式)...'
+                            conversion_status[task_id]['step'] = 'processing_pages_fallback'
+                            conversion_status[task_id]['current_page'] = page
+                            conversion_status[task_id]['total_pages'] = total
+                            
+                            # Calculate estimated time remaining
+                            elapsed_time = time.time() - start_time
+                            if page > 0:
+                                avg_time_per_page = elapsed_time / page
+                                remaining_pages = total - page
+                                eta_seconds = avg_time_per_page * remaining_pages
+                                conversion_status[task_id]['eta'] = f"预计剩余时间: {int(eta_seconds)}秒"
+                    
+                    # Set progress callback if supported
+                    if hasattr(cv, 'set_progress_callback'):
+                        cv.set_progress_callback(fallback_progress_callback)
+                    
                     cv.convert(output_path, start=0, end=None,
                               multi_processing=False,
                               debug=False,
@@ -192,7 +237,7 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
 @app.route('/')
 def index():
     """Serve the main page"""
-    return render_template('index_local.html')
+    return render_template('index.html')
 
 @app.route('/api/health')
 def health_check():
