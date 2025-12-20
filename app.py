@@ -14,7 +14,10 @@ import uuid
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 import threading
+import multiprocessing
+import subprocess
 import time
+import json
 from pathlib import Path
 from pdf2docx import Converter
 
@@ -36,9 +39,81 @@ ALLOWED_EXTENSIONS = {'pdf'}
 # Global dictionary to track conversion status
 conversion_status = {}
 
+# Global dictionary to track frontend heartbeat status
+frontend_heartbeat = {}
+
+# Global dictionary to track conversion processes
+conversion_processes = {}
+
+def monitor_conversion_process(task_id):
+    """监控转换进程并更新状态"""
+    try:
+        process_info = conversion_processes.get(task_id)
+        if not process_info:
+            return
+        
+        process = process_info['process']
+        status_file = process_info['status_file']
+        
+        # 监控进程直到完成
+        while process.poll() is None:
+            # 读取状态文件并更新全局状态
+            try:
+                with open(status_file, 'r') as f:
+                    status = json.load(f)
+                    conversion_status[task_id] = status
+            except:
+                pass
+            
+            # 等待一段时间再检查
+            time.sleep(1)
+        
+        # 进程已完成，读取最终状态
+        try:
+            with open(status_file, 'r') as f:
+                final_status = json.load(f)
+                conversion_status[task_id] = final_status
+        except:
+            # 如果无法读取状态文件，检查进程退出码
+            if process.returncode != 0:
+                conversion_status[task_id] = {
+                    'status': 'error',
+                    'message': f'Process exited with code {process.returncode}',
+                    'step': 'error',
+                    'error': f'Process exited with code {process.returncode}'
+                }
+        
+        # 清理资源
+        if task_id in conversion_processes:
+            del conversion_processes[task_id]
+        
+        # 删除状态文件
+        try:
+            os.remove(status_file)
+        except:
+            pass
+            
+    except Exception as e:
+        print(f"[ERROR] Error monitoring process for task {task_id}: {e}")
+        conversion_status[task_id] = {
+            'status': 'error',
+            'message': f'Monitoring error: {str(e)}',
+            'step': 'error',
+            'error': str(e)
+        }
+
 def allowed_file(filename):
     """Check if the file has an allowed extension"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def is_frontend_active(task_id, timeout_seconds=10):
+    """Check if frontend is still active based on heartbeat"""
+    if task_id not in frontend_heartbeat:
+        return False
+    
+    last_heartbeat = frontend_heartbeat[task_id]
+    current_time = time.time()
+    return (current_time - last_heartbeat) <= timeout_seconds
 
 def fix_pdf2docx_compatibility():
     """Fix pdf2docx compatibility issues in Docker"""
@@ -52,6 +127,10 @@ def fix_pdf2docx_compatibility():
 def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
     """Background task for PDF conversion"""
     start_time = time.time()
+    
+    # Initialize heartbeat for this task
+    frontend_heartbeat[task_id] = time.time()
+    
     try:
         conversion_status[task_id] = {
             'status': 'converting',
@@ -61,10 +140,22 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
             'error': None
         }
 
+        # Check if frontend is still active
+        if not is_frontend_active(task_id):
+            raise Exception("Frontend disconnected, cancelling conversion")
+            
+        # Check if task was cancelled
+        if conversion_status[task_id].get('status') == 'cancelled':
+            raise Exception("Task was cancelled by user")
+
         # Step 1: Upload complete
         conversion_status[task_id]['progress'] = 5
         conversion_status[task_id]['message'] = 'File uploaded successfully'
         conversion_status[task_id]['step'] = 'upload_complete'
+
+        # Check if frontend is still active
+        if not is_frontend_active(task_id):
+            raise Exception("Frontend disconnected, cancelling conversion")
 
         # Step 2: Initialize converter
         conversion_status[task_id]['progress'] = 10
@@ -95,6 +186,10 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
         # Try pdf2docx conversion with enhanced error handling
         print(f"Start to convert {pdf_path} to {output_path}")
 
+        # Check if frontend is still active before starting conversion
+        if not is_frontend_active(task_id):
+            raise Exception("Frontend disconnected, cancelling conversion")
+
         try:
             # Step 6: Converting elements
             conversion_status[task_id]['progress'] = 55
@@ -113,6 +208,15 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
 
             # Perform conversion with progress tracking
             def progress_callback(page, total):
+                # Check if task was cancelled
+                if conversion_status[task_id].get('status') == 'cancelled':
+                    print(f"[DEBUG] Task {task_id} was cancelled in progress callback at page {page}")
+                    raise Exception("Task was cancelled by user")
+                
+                # Check if frontend is still active
+                if not is_frontend_active(task_id):
+                    raise Exception("Frontend disconnected, cancelling conversion")
+                    
                 # Update progress during conversion (50% to 80% range)
                 if total > 0:
                     page_progress = 50 + int((page / total) * 30)  # Map page progress to 50-80% range
@@ -156,6 +260,11 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
 
                     # Try conversion with minimal layout analysis and progress tracking
                     def fallback_progress_callback(page, total):
+                        # Check if task was cancelled
+                        if conversion_status[task_id].get('status') == 'cancelled':
+                            print(f"[DEBUG] Task {task_id} was cancelled in fallback progress callback at page {page}")
+                            raise Exception("Task was cancelled by user")
+                        
                         # Update progress during conversion (55% to 80% range)
                         if total > 0:
                             page_progress = 55 + int((page / total) * 25)  # Map page progress to 55-80% range
@@ -218,12 +327,20 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
             conversion_status[task_id]['output_file'] = os.path.basename(output_path)
         else:
             raise Exception("Output file was not created")
+            
+        # Clean up heartbeat record
+        if task_id in frontend_heartbeat:
+            del frontend_heartbeat[task_id]
 
     except Exception as e:
         conversion_status[task_id]['status'] = 'error'
         conversion_status[task_id]['message'] = f'Conversion failed: {str(e)}'
         conversion_status[task_id]['step'] = 'error'
         conversion_status[task_id]['error'] = str(e)
+        
+        # Clean up heartbeat record
+        if task_id in frontend_heartbeat:
+            del frontend_heartbeat[task_id]
 
         # Clean up files on error
         try:
@@ -308,21 +425,53 @@ def convert_pdf():
         # Save uploaded file
         file.save(pdf_path)
 
-        # Start conversion in background
-        print(f"[DEBUG] Starting conversion thread for task {task_id}")
+        # Start conversion in background process
+        print(f"[DEBUG] Starting conversion process for task {task_id}")
         try:
-            thread = threading.Thread(
-                target=convert_pdf_to_docx_task,
-                args=(task_id, pdf_path, output_path)
+            # Create status file for process communication
+            status_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{task_id}_status.json")
+            
+            # Initialize status file
+            with open(status_file, 'w') as f:
+                json.dump({
+                    'status': 'converting',
+                    'progress': 0,
+                    'message': 'Starting conversion...',
+                    'step': 'initialization',
+                    'error': None
+                }, f)
+            
+            # Start conversion worker process
+            process = subprocess.Popen([
+                'python', 'conversion_worker.py',
+                task_id,
+                pdf_path,
+                output_path,
+                status_file
+            ])
+            
+            # Store process reference
+            conversion_processes[task_id] = {
+                'process': process,
+                'status_file': status_file,
+                'pdf_path': pdf_path,
+                'output_path': output_path
+            }
+            
+            # Start a thread to monitor the process and update status
+            monitor_thread = threading.Thread(
+                target=monitor_conversion_process,
+                args=(task_id,)
             )
-            thread.daemon = True
-            thread.start()
-            print(f"[DEBUG] Conversion thread started successfully")
-        except Exception as thread_error:
-            print(f"[ERROR] Failed to start conversion thread: {thread_error}")
+            monitor_thread.daemon = True
+            monitor_thread.start()
+            
+            print(f"[DEBUG] Conversion process started successfully with PID {process.pid}")
+        except Exception as process_error:
+            print(f"[ERROR] Failed to start conversion process: {process_error}")
             import traceback
-            print(f"[ERROR] Thread error traceback: {traceback.format_exc()}")
-            return jsonify({'error': f'Failed to start conversion: {str(thread_error)}'}), 500
+            print(f"[ERROR] Process error traceback: {traceback.format_exc()}")
+            return jsonify({'error': f'Failed to start conversion: {str(process_error)}'}), 500
 
         return jsonify({
             'task_id': task_id,
@@ -341,6 +490,19 @@ def get_status(task_id):
     """Get conversion status"""
     if task_id not in conversion_status:
         return jsonify({'error': 'Task not found'}), 404
+
+    # If task is running in a process, try to get the latest status from the status file
+    if task_id in conversion_processes:
+        process_info = conversion_processes[task_id]
+        status_file = process_info['status_file']
+        
+        try:
+            with open(status_file, 'r') as f:
+                file_status = json.load(f)
+                # Update global status with latest from file
+                conversion_status[task_id].update(file_status)
+        except:
+            pass  # If we can't read the file, use the cached status
 
     return jsonify(conversion_status[task_id])
 
@@ -393,6 +555,67 @@ def cleanup_files(task_id):
 
     except Exception as e:
         return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
+
+@app.route('/api/heartbeat/<task_id>', methods=['POST'])
+def heartbeat(task_id):
+    """Receive heartbeat from frontend to indicate it's still active"""
+    frontend_heartbeat[task_id] = time.time()
+    return jsonify({'status': 'received'})
+
+@app.route('/api/cancel/<task_id>', methods=['POST'])
+def cancel_task(task_id):
+    """Cancel a running conversion task"""
+    if task_id not in conversion_status:
+        return jsonify({'error': 'Task not found'}), 404
+    
+    # Mark task as cancelled
+    conversion_status[task_id]['status'] = 'cancelled'
+    conversion_status[task_id]['message'] = 'Task cancelled by user'
+    conversion_status[task_id]['step'] = 'cancelled'
+    
+    # Remove heartbeat record
+    if task_id in frontend_heartbeat:
+        del frontend_heartbeat[task_id]
+    
+    # If task is running in a process, terminate it
+    if task_id in conversion_processes:
+        process_info = conversion_processes[task_id]
+        process = process_info['process']
+        status_file = process_info['status_file']
+        
+        # Update status file to notify the process
+        try:
+            with open(status_file, 'w') as f:
+                json.dump({
+                    'status': 'cancelled',
+                    'message': 'Task cancelled by user',
+                    'step': 'cancelled'
+                }, f)
+        except:
+            pass
+        
+        # Give the process a moment to exit gracefully
+        time.sleep(1)
+        
+        # If process is still running, terminate it
+        if process.poll() is None:
+            print(f"[DEBUG] Terminating process {process.pid} for task {task_id}")
+            try:
+                process.terminate()
+                
+                # If terminate doesn't work, force kill
+                time.sleep(2)
+                if process.poll() is None:
+                    print(f"[DEBUG] Force killing process {process.pid} for task {task_id}")
+                    process.kill()
+            except Exception as e:
+                print(f"[ERROR] Failed to terminate process for task {task_id}: {e}")
+        
+        # Clean up process info
+        if task_id in conversion_processes:
+            del conversion_processes[task_id]
+    
+    return jsonify({'status': 'cancelled'})
 
 @app.errorhandler(413)
 def too_large(e):

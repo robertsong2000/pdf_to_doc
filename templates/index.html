@@ -153,6 +153,12 @@
             border: 1px solid #f5c6cb;
         }
 
+        .status-message.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
         .file-info {
             background: #f8f9fa;
             padding: 15px;
@@ -596,6 +602,18 @@
             if (!currentTaskId) return;
 
             try {
+                // Send heartbeat to indicate frontend is still active
+                try {
+                    await fetch(`/api/heartbeat/${currentTaskId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                } catch (heartbeatError) {
+                    console.warn('Failed to send heartbeat:', heartbeatError);
+                }
+                
                 const response = await fetch(`/api/status/${currentTaskId}`);
                 const status = await response.json();
 
@@ -604,9 +622,9 @@
                         updateDetailedStatus(status);
                         
                         // Adjust polling frequency based on current step
-                        let pollInterval = 1000; // Default 1 second
+                        let pollInterval = 3000; // Default 3 seconds
                         if (status.step === 'processing_pages' || status.step === 'processing_pages_fallback') {
-                            pollInterval = 500; // More frequent updates during page processing
+                            pollInterval = 2000; // More frequent updates during page processing
                         }
                         
                         setTimeout(pollConversionStatus, pollInterval);
@@ -625,6 +643,12 @@
                     } else if (status.status === 'error') {
                         updateDetailedStatus(status);
                         statusMessage.className = 'status-message error';
+                        convertBtn.disabled = false;
+                        convertBtn.innerHTML = '✨ 重新转换';
+                        isConverting = false;
+                    } else if (status.status === 'cancelled') {
+                        updateDetailedStatus(status);
+                        statusMessage.className = 'status-message warning';
                         convertBtn.disabled = false;
                         convertBtn.innerHTML = '✨ 重新转换';
                         isConverting = false;
@@ -649,7 +673,11 @@
             const { message, progress, step, status } = data;
 
             statusText.textContent = message;
-            statusMessage.className = `status-message ${status === 'error' ? 'error' : 'info'}`;
+            let statusClass = 'info';
+            if (status === 'error') statusClass = 'error';
+            else if (status === 'cancelled') statusClass = 'warning';
+            
+            statusMessage.className = `status-message ${statusClass}`;
             progressBar.style.width = `${progress}%`;
             progressBar.setAttribute('aria-valuenow', progress);
 
@@ -761,6 +789,15 @@
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
+
+        // Add page unload event listener to stop backend processing when page is refreshed or closed
+        window.addEventListener('beforeunload', function() {
+            if (currentTaskId && isConverting) {
+                // Use navigator.sendBeacon for reliable delivery during page unload
+                const data = new FormData();
+                navigator.sendBeacon(`/api/cancel/${currentTaskId}`, data);
+            }
+        });
     </script>
 </body>
 </html>
