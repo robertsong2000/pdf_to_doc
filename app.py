@@ -21,7 +21,7 @@ from pdf2docx import Converter
 app = Flask(__name__)
 
 # Configuration
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 80 * 1024 * 1024  # 80MB max file size
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'outputs'
 app.config['SECRET_KEY'] = 'your-secret-key-here'  # Change this in production
@@ -194,12 +194,53 @@ def index():
     """Serve the main page"""
     return render_template('index_local.html')
 
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        import sys
+        import os
+        import pdf2docx
+
+        return jsonify({
+            'status': 'healthy',
+            'python_version': sys.version,
+            'platform': os.uname().sysname if hasattr(os, 'uname') else 'unknown',
+            'pdf2docx_available': True,
+            'working_directory': os.getcwd(),
+            'uploads_dir': app.config['UPLOAD_FOLDER'],
+            'outputs_dir': app.config['OUTPUT_FOLDER'],
+            'directories_exist': {
+                'uploads': os.path.exists(app.config['UPLOAD_FOLDER']),
+                'outputs': os.path.exists(app.config['OUTPUT_FOLDER']),
+                'templates': os.path.exists('templates')
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 500
+
 @app.route('/api/convert', methods=['POST'])
 def convert_pdf():
     """Convert PDF to DOCX"""
     try:
+        print(f"[DEBUG] Convert request received from {request.remote_addr}")
+
+        # Safely check request files without causing errors
+        try:
+            files_keys = list(request.files.keys()) if request.files else []
+            form_data = dict(request.form) if request.form else {}
+            print(f"[DEBUG] Request files: {files_keys}")
+            print(f"[DEBUG] Request form: {form_data}")
+        except Exception as debug_error:
+            print(f"[DEBUG] Error accessing request data: {debug_error}")
+            return jsonify({'error': 'Invalid request format'}), 400
+
         # Check if file is in request
-        if 'file' not in request.files:
+        if not request.files or 'file' not in request.files:
+            print("[DEBUG] No file in request")
             return jsonify({'error': 'No file provided'}), 400
 
         file = request.files['file']
@@ -223,12 +264,20 @@ def convert_pdf():
         file.save(pdf_path)
 
         # Start conversion in background
-        thread = threading.Thread(
-            target=convert_pdf_to_docx_task,
-            args=(task_id, pdf_path, output_path)
-        )
-        thread.daemon = True
-        thread.start()
+        print(f"[DEBUG] Starting conversion thread for task {task_id}")
+        try:
+            thread = threading.Thread(
+                target=convert_pdf_to_docx_task,
+                args=(task_id, pdf_path, output_path)
+            )
+            thread.daemon = True
+            thread.start()
+            print(f"[DEBUG] Conversion thread started successfully")
+        except Exception as thread_error:
+            print(f"[ERROR] Failed to start conversion thread: {thread_error}")
+            import traceback
+            print(f"[ERROR] Thread error traceback: {traceback.format_exc()}")
+            return jsonify({'error': f'Failed to start conversion: {str(thread_error)}'}), 500
 
         return jsonify({
             'task_id': task_id,
@@ -237,7 +286,10 @@ def convert_pdf():
         })
 
     except Exception as e:
-        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+        import traceback
+        error_details = f"Upload failed: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+        print(f"[ERROR] {error_details}")
+        return jsonify({'error': f'Upload failed: {str(e)}', 'details': traceback.format_exc()}), 500
 
 @app.route('/api/status/<task_id>')
 def get_status(task_id):
@@ -299,7 +351,7 @@ def cleanup_files(task_id):
 
 @app.errorhandler(413)
 def too_large(e):
-    return jsonify({'error': 'File too large. Maximum size is 16MB'}), 413
+    return jsonify({'error': 'File too large. Maximum size is 80MB'}), 413
 
 if __name__ == '__main__':
     # Clean up old files on startup

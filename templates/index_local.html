@@ -337,7 +337,7 @@
                     📁 选择文件
                 </button>
                 <input type="file" id="fileInput" class="file-input" accept=".pdf">
-                <p class="text-muted mt-3 mb-0">支持最大 16MB 的PDF文件</p>
+                <p class="text-muted mt-3 mb-0">支持最大 80MB 的PDF文件</p>
             </div>
 
             <div class="file-info hidden" id="fileInfo">
@@ -406,6 +406,7 @@
     <script>
         let selectedFile = null;
         let currentTaskId = null;
+        let isConverting = false;
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -484,8 +485,8 @@
                 return;
             }
 
-            if (file.size > 16 * 1024 * 1024) {
-                alert('文件大小不能超过16MB');
+            if (file.size > 80 * 1024 * 1024) {
+                alert('文件大小不能超过80MB');
                 return;
             }
 
@@ -506,6 +507,7 @@
             uploadArea.classList.remove('hidden');
             fileInfo.classList.add('hidden');
             convertBtn.disabled = true;
+            isConverting = false;
             resetProgress();
         }
 
@@ -522,7 +524,9 @@
         }
 
         async function convertFile() {
-            if (!selectedFile) return;
+            if (!selectedFile || isConverting) return;
+
+            isConverting = true;
 
             const formData = new FormData();
             formData.append('file', selectedFile);
@@ -584,6 +588,7 @@
                 });
                 convertBtn.disabled = false;
                 convertBtn.innerHTML = '✨ 开始转换';
+                isConverting = false;
             }
         }
 
@@ -603,17 +608,20 @@
                         statusMessage.className = 'status-message success';
                         convertBtn.innerHTML = '✅ 转换完成';
                         downloadContainer.classList.remove('hidden');
+                        isConverting = false;
                     } else if (status.status === 'error') {
                         updateDetailedStatus(status);
                         statusMessage.className = 'status-message error';
                         convertBtn.disabled = false;
                         convertBtn.innerHTML = '✨ 重新转换';
+                        isConverting = false;
                     }
                 }
             } catch (error) {
                 updateStatus('获取状态失败', 'error', 0);
                 convertBtn.disabled = false;
                 convertBtn.innerHTML = '✨ 重新转换';
+                isConverting = false;
             }
         }
 
