@@ -11,6 +11,7 @@ Requirements:
 
 import os
 import uuid
+import argparse
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 import threading
@@ -617,11 +618,203 @@ def cancel_task(task_id):
     
     return jsonify({'status': 'cancelled'})
 
+# ============================================================================
+# DOCX Merge API Routes
+# ============================================================================
+
+from merger import DocxMerger
+
+# Global dictionary to track merge status
+merge_status = {}
+
+def allowed_docx_file(filename):
+    """Check if the file has a .docx extension"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() == 'docx'
+
+@app.route('/api/merge/health', methods=['GET'])
+def merge_health_check():
+    """Health check endpoint for merge service"""
+    try:
+        return jsonify({
+            'status': 'ok',
+            'message': 'DOCX合并服务运行中'
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/merge', methods=['POST'])
+def merge_docx():
+    """Merge multiple DOCX files into one"""
+    try:
+        # Check if files are in request
+        if not request.files or 'files' not in request.files:
+            return jsonify({'error': '没有上传文件'}), 400
+
+        files = request.files.getlist('files')
+
+        if not files or len(files) == 0:
+            return jsonify({'error': '没有选择文件'}), 400
+
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())
+
+        # Create session directory
+        session_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'merge_{session_id}')
+        os.makedirs(session_dir, exist_ok=True)
+
+        # Validate and save files
+        valid_files = []
+        for file in files:
+            if file and file.filename and allowed_docx_file(file.filename):
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(session_dir, filename)
+                file.save(filepath)
+                valid_files.append(filepath)
+
+        if not valid_files:
+            return jsonify({'error': '没有有效的docx文件'}), 400
+
+        if len(valid_files) < 2:
+            return jsonify({'error': '请至少上传2个docx文件进行合并'}), 400
+
+        # Get parameters
+        page_break = request.form.get('page_break', 'true').lower() == 'true'
+        output_name = request.form.get('output_name', 'merged.docx')
+
+        if not output_name.endswith('.docx'):
+            output_name += '.docx'
+
+        # Perform merge
+        output_file = os.path.join(app.config['OUTPUT_FOLDER'], f'merge_{session_id}_{output_name}')
+
+        try:
+            # Use first file as base document
+            first_file = valid_files[0]
+            merger = DocxMerger(output_file, first_file=first_file)
+            merger.merge_documents(valid_files, add_page_break=page_break)
+            merger.save()
+
+            return jsonify({
+                'success': True,
+                'message': f'成功合并 {len(valid_files)} 个文件',
+                'download_url': f'/api/merge/download/merge_{session_id}_{output_name}',
+                'filename': output_name
+            })
+
+        except Exception as e:
+            return jsonify({'error': f'合并失败: {str(e)}'}), 500
+
+    except Exception as e:
+        import traceback
+        error_details = f"Merge failed: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+        print(f"[ERROR] {error_details}")
+        return jsonify({'error': f'合并失败: {str(e)}'}), 500
+
+@app.route('/api/merge/download/<filename>', methods=['GET'])
+def download_merged(filename):
+    """Download merged DOCX file"""
+    # Security check: ensure filename starts with 'merge_'
+    if not filename.startswith('merge_'):
+        return jsonify({'error': '无效的文件名'}), 400
+
+    filepath = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': '文件不存在或已过期'}), 404
+
+    # Remove session_id prefix from download name
+    download_name = filename
+    # Find the last underscore before the actual filename
+    parts = filename.split('_', 2)
+    if len(parts) >= 3:
+        download_name = parts[2]
+
+    return send_file(
+        filepath,
+        as_attachment=True,
+        download_name=download_name
+    )
+
+@app.route('/api/merge/cleanup/<session_id>', methods=['DELETE'])
+def cleanup_merge_files(session_id):
+    """Clean up merged files"""
+    try:
+        # Remove session directory
+        session_dir = os.path.join(app.config['UPLOAD_FOLDER'], f'merge_{session_id}')
+        if os.path.exists(session_dir):
+            import shutil
+            shutil.rmtree(session_dir)
+
+        # Remove output file
+        for filename in os.listdir(app.config['OUTPUT_FOLDER']):
+            if filename.startswith(f'merge_{session_id}'):
+                os.remove(os.path.join(app.config['OUTPUT_FOLDER'], filename))
+
+        return jsonify({'message': '文件清理成功'})
+
+    except Exception as e:
+        return jsonify({'error': f'清理失败: {str(e)}'}), 500
+
+# ============================================================================
+# Error Handlers
+# ============================================================================
+
 @app.errorhandler(413)
 def too_large(e):
     return jsonify({'error': 'File too large. Maximum size is 80MB'}), 413
 
+
+def parse_args():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(
+        description='文档工具集 - PDF转DOCX & DOCX合并服务',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用示例:
+  # 使用默认端口5000启动
+  python app.py
+
+  # 使用端口8080启动
+  python app.py -p 8080
+
+  # 使用端口3000并关闭调试模式
+  python app.py -p 3000 --no-debug
+
+  # 指定host和port
+  python app.py -p 5000 --host 127.0.0.1
+        """
+    )
+
+    parser.add_argument(
+        '-p', '--port',
+        type=int,
+        default=5000,
+        help='服务端口 (默认: 5000)'
+    )
+
+    parser.add_argument(
+        '--host',
+        type=str,
+        default='0.0.0.0',
+        help='服务主机 (默认: 0.0.0.0)'
+    )
+
+    parser.add_argument(
+        '--no-debug',
+        action='store_true',
+        help='关闭调试模式'
+    )
+
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
+    # 解析命令行参数
+    args = parse_args()
+
     # Clean up old files on startup
     try:
         for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
@@ -633,4 +826,11 @@ if __name__ == '__main__':
     except:
         pass
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("=" * 60)
+    print("文档工具集启动中...")
+    print(f"  - PDF转DOCX转换")
+    print(f"  - DOCX文件合并")
+    print(f"访问地址: http://{args.host}:{args.port}")
+    print("=" * 60)
+
+    app.run(debug=not args.no_debug, host=args.host, port=args.port)
