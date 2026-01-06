@@ -478,6 +478,24 @@
             transform: scale(1.2);
         }
 
+        .total-size-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #e8f4fd;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #0066cc;
+            font-weight: 600;
+        }
+
+        .text-warning {
+            color: #dc3545 !important;
+            background: #fff3cd !important;
+        }
+
         .merge-options {
             display: flex;
             align-items: center;
@@ -1138,10 +1156,19 @@
         });
 
         function handleMergeFiles(files) {
+            const MAX_TOTAL_SIZE = 200 * 1024 * 1024; // 200MB
+            let currentTotalSize = mergeSelectedFiles.reduce((sum, f) => sum + f.size, 0);
+            
             for (const file of files) {
                 if (file.name.toLowerCase().endsWith('.docx')) {
                     if (!mergeSelectedFiles.find(f => f.name === file.name)) {
+                        // Check if adding this file would exceed the limit
+                        if (currentTotalSize + file.size > MAX_TOTAL_SIZE) {
+                            alert(`文件总大小不能超过200MB。当前已选择${formatFileSize(currentTotalSize)}，添加${file.name}(${formatFileSize(file.size)})会超出限制`);
+                            continue;
+                        }
                         mergeSelectedFiles.push(file);
+                        currentTotalSize += file.size;
                     }
                 }
             }
@@ -1149,13 +1176,19 @@
         }
 
         function updateMergeFileList() {
+            const MAX_TOTAL_SIZE = 200 * 1024 * 1024; // 200MB
+            
             if (mergeSelectedFiles.length === 0) {
                 mergeFileList.innerHTML = '<div class="empty-state">尚未选择文件</div>';
                 mergeBtn.disabled = true;
                 return;
             }
 
-            mergeBtn.disabled = mergeSelectedFiles.length < 2;
+            const totalSize = mergeSelectedFiles.reduce((sum, f) => sum + f.size, 0);
+            const sizePercentage = Math.round((totalSize / MAX_TOTAL_SIZE) * 100);
+            const sizeWarning = totalSize > MAX_TOTAL_SIZE * 0.8 ? 'text-warning' : '';
+            
+            mergeBtn.disabled = mergeSelectedFiles.length < 2 || totalSize > MAX_TOTAL_SIZE;
             mergeFileList.innerHTML = mergeSelectedFiles.map((file, index) => `
                 <div class="file-item">
                     <div class="file-info">
@@ -1166,6 +1199,13 @@
                     <button class="remove-btn" onclick="removeMergeFile(${index})">&times;</button>
                 </div>
             `).join('');
+            
+            // Add total size info
+            mergeFileList.innerHTML += `
+                <div class="total-size-info ${sizeWarning}">
+                    <span>总大小: ${formatFileSize(totalSize)} / 200MB (${sizePercentage}%)</span>
+                </div>
+            `;
         }
 
         function removeMergeFile(index) {
@@ -1201,7 +1241,9 @@
 
                 const data = await response.json();
 
-                if (data.success) {
+                if (response.status === 413) {
+                    showMergeResult(data.error || '文件总大小超过限制', 'error');
+                } else if (data.success) {
                     showMergeResult(`
                         <h4>✅ ${data.message}</h4>
                         <button class="download-btn" onclick="window.location.href='${data.download_url}'">

@@ -25,7 +25,8 @@ from pdf2docx import Converter
 app = Flask(__name__)
 
 # Configuration
-app.config['MAX_CONTENT_LENGTH'] = 80 * 1024 * 1024  # 80MB max file size
+# Note: MAX_CONTENT_LENGTH is not set globally to allow different limits for different routes
+# Each route will handle its own file size validation
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'outputs'
 app.config['SECRET_KEY'] = 'your-secret-key-here'  # Change this in production
@@ -414,6 +415,15 @@ def convert_pdf():
         if not allowed_file(file.filename):
             return jsonify({'error': 'Only PDF files are allowed'}), 400
 
+        # Check file size for PDF conversion (80MB limit)
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        
+        MAX_PDF_SIZE = 80 * 1024 * 1024  # 80MB
+        if file_size > MAX_PDF_SIZE:
+            return jsonify({'error': f'PDF文件大小不能超过80MB，当前文件大小为{file_size / (1024 * 1024):.2f}MB'}), 413
+
         # Generate unique task ID
         task_id = str(uuid.uuid4())
 
@@ -657,6 +667,13 @@ def merge_docx():
 
         if not files or len(files) == 0:
             return jsonify({'error': '没有选择文件'}), 400
+
+        # Calculate total size of all files
+        total_size = sum(file.content_length for file in files if file)
+        MAX_TOTAL_SIZE = 200 * 1024 * 1024  # 200MB
+        
+        if total_size > MAX_TOTAL_SIZE:
+            return jsonify({'error': f'文件总大小不能超过200MB，当前总大小为{total_size / (1024 * 1024):.2f}MB'}), 413
 
         # Generate unique session ID
         session_id = str(uuid.uuid4())
