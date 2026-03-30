@@ -619,6 +619,30 @@
                 </div>
             </div>
 
+            <div class="page-range-container hidden" id="pageRangeContainer" style="margin-top: 20px; padding: 20px; background: #f8f9ff; border-radius: 12px; border: 1px solid #e0e5ff;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <span style="font-size: 18px;">📋</span>
+                    <span style="font-weight: 600; color: #333;">页码范围</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                        <input type="radio" name="pageMode" value="all" id="pageModeAll" checked style="accent-color: #667eea;">
+                        全部页面
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                        <input type="radio" name="pageMode" value="range" id="pageModeRange" style="accent-color: #667eea;">
+                        指定页码
+                    </label>
+                </div>
+                <div class="page-range-inputs" id="pageRangeInputs" style="display: none; margin-top: 12px; align-items: center; gap: 8px;">
+                    <span style="color: #555; font-size: 14px;">第</span>
+                    <input type="number" id="startPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
+                    <span style="color: #555; font-size: 14px;">页到第</span>
+                    <input type="number" id="endPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
+                    <span style="color: #555; font-size: 14px;">页</span>
+                </div>
+            </div>
+
             <div class="text-center mt-4">
                 <button type="button" class="btn-convert" id="convertBtn" disabled>
                     ✨ 开始转换
@@ -755,6 +779,23 @@
         const statusText = document.getElementById('statusText');
         const downloadContainer = document.getElementById('downloadContainer');
         const downloadBtn = document.getElementById('downloadBtn');
+        const pageRangeContainer = document.getElementById('pageRangeContainer');
+        const pageRangeInputs = document.getElementById('pageRangeInputs');
+        const pageModeAll = document.getElementById('pageModeAll');
+        const pageModeRange = document.getElementById('pageModeRange');
+        const startPageInput = document.getElementById('startPage');
+        const endPageInput = document.getElementById('endPage');
+
+        // Page mode toggle
+        document.querySelectorAll('input[name="pageMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'range') {
+                    pageRangeInputs.style.display = 'flex';
+                } else {
+                    pageRangeInputs.style.display = 'none';
+                }
+            });
+        });
 
         // Upload area click
         uploadArea.addEventListener('click', () => {
@@ -830,6 +871,7 @@
 
             uploadArea.classList.add('hidden');
             fileInfo.classList.remove('hidden');
+            pageRangeContainer.classList.remove('hidden');
             convertBtn.disabled = false;
 
             resetProgress();
@@ -840,6 +882,7 @@
             fileInput.value = '';
             uploadArea.classList.remove('hidden');
             fileInfo.classList.add('hidden');
+            pageRangeContainer.classList.add('hidden');
             convertBtn.disabled = true;
             isConverting = false;
             resetProgress();
@@ -864,6 +907,22 @@
 
             const formData = new FormData();
             formData.append('file', selectedFile);
+
+            // Append page range if specified
+            if (pageModeRange.checked) {
+                const startVal = parseInt(startPageInput.value);
+                const endVal = parseInt(endPageInput.value);
+                if (startVal > 0 && endVal > 0 && endVal >= startVal) {
+                    formData.append('start_page', startVal);
+                    formData.append('end_page', endVal);
+                } else {
+                    alert('请输入有效的页码范围（起始页不能大于结束页）');
+                    isConverting = false;
+                    convertBtn.disabled = false;
+                    convertBtn.innerHTML = '✨ 开始转换';
+                    return;
+                }
+            }
 
             convertBtn.disabled = true;
             convertBtn.innerHTML = '<span class="loading-spinner"></span>处理中...';

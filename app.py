@@ -436,6 +436,10 @@ def convert_pdf():
         # Save uploaded file
         file.save(pdf_path)
 
+        # Get page range parameters
+        start_page = request.form.get('start_page', type=int)
+        end_page = request.form.get('end_page', type=int)
+
         # Start conversion in background process
         print(f"[DEBUG] Starting conversion process for task {task_id}")
         try:
@@ -453,13 +457,20 @@ def convert_pdf():
                 }, f)
             
             # Start conversion worker process
-            process = subprocess.Popen([
+            worker_args = [
                 'python', 'conversion_worker.py',
                 task_id,
                 pdf_path,
                 output_path,
                 status_file
-            ])
+            ]
+            # Add page range arguments if provided
+            if start_page is not None:
+                worker_args.append(str(start_page))
+            if end_page is not None:
+                worker_args.append(str(end_page))
+
+            process = subprocess.Popen(worker_args)
             
             # Store process reference
             conversion_processes[task_id] = {

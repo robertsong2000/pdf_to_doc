@@ -16,7 +16,7 @@ def fix_pdf2docx_compatibility():
     os.environ['DISPLAY'] = ':99'
     os.environ['PDF2DOCV_SKIP_CHECK'] = '1'
 
-def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file):
+def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page=None, end_page=None):
     """执行PDF到DOCX的转换"""
     start_time = time.time()
     
@@ -70,6 +70,19 @@ def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file):
 
         print(f"Start to convert {pdf_path} to {output_path}")
 
+        # Calculate page range for pdf2docx (0-indexed)
+        convert_start = (start_page - 1) if start_page else 0
+        convert_end = end_page if end_page else None
+
+        if start_page or end_page:
+            page_info = f" (pages {start_page or 'start'} to {end_page or 'end'})"
+            update_status(status_file, {
+                'progress': 42,
+                'message': f'指定转换页面范围: {page_info}',
+                'step': 'preparing_conversion'
+            })
+            print(f"Converting page range: start={convert_start}, end={convert_end}")
+
         # Step 6: Converting elements
         update_status(status_file, {
             'progress': 55,
@@ -121,9 +134,9 @@ def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file):
                 cv.set_progress_callback(progress_callback)
             
             # 执行转换
-            cv.convert(output_path, start=0, end=None)
+            cv.convert(output_path, start=convert_start, end=convert_end)
             cv.close()
-            
+
         except AttributeError as ae:
             print(f"pdf2docx attribute error: {str(ae)}")
             if 'get_area' in str(ae):
@@ -160,7 +173,7 @@ def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file):
                         cv.set_progress_callback(fallback_progress_callback)
                     
                     # 执行转换
-                    cv.convert(output_path, start=0, end=None,
+                    cv.convert(output_path, start=convert_start, end=convert_end,
                               multi_processing=False,
                               debug=False,
                               keep_layout=True)
@@ -247,13 +260,16 @@ def calculate_eta(start_time, current_page, total_pages):
     return f"预计剩余时间: {int(eta_seconds)}秒"
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
-        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file>")
+    if len(sys.argv) < 5:
+        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page]")
         sys.exit(1)
-    
+
     task_id = sys.argv[1]
     pdf_path = sys.argv[2]
     output_path = sys.argv[3]
     status_file = sys.argv[4]
-    
-    convert_pdf_to_docx(task_id, pdf_path, output_path, status_file)
+
+    start_page = int(sys.argv[5]) if len(sys.argv) > 5 else None
+    end_page = int(sys.argv[6]) if len(sys.argv) > 6 else None
+
+    convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page, end_page)
