@@ -787,6 +787,194 @@ def cleanup_merge_files(session_id):
         return jsonify({'error': f'清理失败: {str(e)}'}), 500
 
 # ============================================================================
+# PDF to CSV API Routes
+# ============================================================================
+
+from csv_extractor import PdfTableExtractor
+
+# Global dictionary to track CSV extraction status
+csv_status = {}
+
+def extract_csv_task(task_id, pdf_path, output_dir, start_page, end_page, output_mode, original_name):
+    """Background task for CSV extraction"""
+    try:
+        csv_status[task_id] = {
+            'status': 'processing',
+            'progress': 0,
+            'message': '开始提取表格...',
+            'step': 'initialization'
+        }
+
+        def progress_callback(current_page, total_pages, tables_found):
+            pct = int((current_page / total_pages) * 80) + 10
+            csv_status[task_id].update({
+                'progress': pct,
+                'message': f'处理页面 {current_page}/{total_pages}，已发现 {tables_found} 个表格...',
+                'step': 'extracting',
+                'current_page': current_page,
+                'total_pages': total_pages,
+                'tables_found': tables_found
+            })
+
+        csv_status[task_id].update({'progress': 10, 'message': '正在打开PDF文档...'})
+
+        extractor = PdfTableExtractor(pdf_path)
+        tables = extractor.extract_tables(start_page, end_page, progress_callback)
+
+        if not tables:
+            csv_status[task_id] = {
+                'status': 'completed',
+                'progress': 100,
+                'message': 'PDF中未找到表格',
+                'step': 'completed',
+                'tables_found': 0,
+                'no_tables': True
+            }
+            return
+
+        csv_status[task_id].update({'progress': 90, 'message': '正在保存文件...'})
+
+        base_name = original_name.rsplit('.', 1)[0]
+
+        if output_mode == 'separate_zip':
+            output_filename = f'{task_id}_{base_name}_tables.zip'
+            output_path = os.path.join(output_dir, output_filename)
+            extractor.save_as_zip(tables, output_path, base_name)
+            download_name = f'{base_name}_tables.zip'
+        else:
+            output_filename = f'{task_id}_{base_name}_tables.csv'
+            output_path = os.path.join(output_dir, output_filename)
+            extractor.save_as_single_csv(tables, output_path)
+            download_name = f'{base_name}_tables.csv'
+
+        csv_status[task_id] = {
+            'status': 'completed',
+            'progress': 100,
+            'message': f'提取完成！共发现 {len(tables)} 个表格',
+            'step': 'completed',
+            'tables_found': len(tables),
+            'output_file': output_filename,
+            'download_name': download_name
+        }
+
+    except Exception as e:
+        csv_status[task_id] = {
+            'status': 'error',
+            'message': f'提取失败: {str(e)}',
+            'step': 'error',
+            'error': str(e)
+        }
+        # Clean up files on error
+        try:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except:
+            pass
+
+@app.route('/api/csv/extract', methods=['POST'])
+def extract_csv():
+    """Extract tables from PDF and save as CSV"""
+    try:
+        if not request.files or 'file' not in request.files:
+            return jsonify({'error': '没有上传文件'}), 400
+
+        file = request.files['file']
+
+        if file.filename == '':
+            return jsonify({'error': '没有选择文件'}), 400
+
+        if not allowed_file(file.filename):
+            return jsonify({'error': '仅支持PDF文件'}), 400
+
+        # Check file size (80MB limit)
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+
+        MAX_PDF_SIZE = 80 * 1024 * 1024
+        if file_size > MAX_PDF_SIZE:
+            return jsonify({'error': f'PDF文件大小不能超过80MB，当前文件大小为{file_size / (1024 * 1024):.2f}MB'}), 413
+
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], f"csv_{task_id}_{filename}")
+        file.save(pdf_path)
+
+        # Get parameters
+        start_page = request.form.get('start_page', type=int)
+        end_page = request.form.get('end_page', type=int)
+        output_mode = request.form.get('output_mode', 'single_csv')
+
+        # Start extraction in background thread
+        extract_thread = threading.Thread(
+            target=extract_csv_task,
+            args=(task_id, pdf_path, app.config['OUTPUT_FOLDER'],
+                  start_page, end_page, output_mode, filename)
+        )
+        extract_thread.daemon = True
+        extract_thread.start()
+
+        return jsonify({
+            'task_id': task_id,
+            'message': '文件上传成功，开始提取表格...'
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] CSV extraction failed: {traceback.format_exc()}")
+        return jsonify({'error': f'上传失败: {str(e)}'}), 500
+
+@app.route('/api/csv/status/<task_id>')
+def get_csv_status(task_id):
+    """Get CSV extraction status"""
+    if task_id not in csv_status:
+        return jsonify({'error': 'Task not found'}), 404
+    return jsonify(csv_status[task_id])
+
+@app.route('/api/csv/download/<task_id>')
+def download_csv(task_id):
+    """Download extracted CSV/ZIP file"""
+    if task_id not in csv_status:
+        return jsonify({'error': 'Task not found'}), 404
+
+    status = csv_status[task_id]
+
+    if status['status'] != 'completed':
+        return jsonify({'error': '文件尚未准备好'}), 400
+
+    output_filename = status.get('output_file')
+    download_name = status.get('download_name', output_filename)
+
+    if not output_filename:
+        return jsonify({'error': '没有可下载的文件'}), 404
+
+    filepath = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+    if not os.path.exists(filepath):
+        return jsonify({'error': '文件不存在或已过期'}), 404
+
+    return send_file(filepath, as_attachment=True, download_name=download_name)
+
+@app.route('/api/csv/cleanup/<task_id>', methods=['DELETE'])
+def cleanup_csv_files(task_id):
+    """Clean up CSV extraction files"""
+    try:
+        for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
+            for filename in os.listdir(folder):
+                if task_id in filename:
+                    os.remove(os.path.join(folder, filename))
+
+        if task_id in csv_status:
+            del csv_status[task_id]
+
+        return jsonify({'message': '文件清理成功'})
+
+    except Exception as e:
+        return jsonify({'error': f'清理失败: {str(e)}'}), 500
+
+# ============================================================================
 # Error Handlers
 # ============================================================================
 
@@ -858,6 +1046,7 @@ if __name__ == '__main__':
     print("文档工具集启动中...")
     print(f"  - PDF转DOCX转换")
     print(f"  - DOCX文件合并")
+    print(f"  - PDF转CSV表格提取")
     print(f"访问地址: http://{args.host}:{args.port}")
     print("=" * 60)
 

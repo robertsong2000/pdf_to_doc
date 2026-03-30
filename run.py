@@ -19,7 +19,8 @@ def check_dependencies():
         'flask',
         'werkzeug',
         'pdf2docx',
-        'pathlib2'
+        'pathlib2',
+        'pdfplumber'
     ]
 
     missing_packages = []
