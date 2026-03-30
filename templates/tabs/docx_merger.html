@@ -1,0 +1,42 @@
+<!-- Tab Content: DOCX Merger -->
+<div class="tab-content" id="docx-merger">
+    <div style="padding: 20px;">
+        <div class="text-center mb-4">
+            <h1 style="display: inline-flex; align-items: center; font-size: 28px; color: #333; margin-bottom: 10px;">
+                <span style="font-size: 48px; color: #667eea; margin-right: 15px;">📋</span>
+                DOCX 文件合并工具
+            </h1>
+            <p style="color: #666; margin-top: 10px;">上传多个Word文档，一键合并为一个文件</p>
+        </div>
+
+        <div class="merge-upload-area" id="mergeUploadArea">
+            <div class="merge-upload-icon">📄</div>
+            <div class="merge-upload-text">点击或拖拽文件到这里</div>
+            <div class="merge-upload-hint">支持 .docx 格式，可同时选择多个文件</div>
+        </div>
+
+        <input type="file" id="mergeFileInput" multiple accept=".docx" style="display: none;">
+
+        <div class="file-list" id="mergeFileList">
+            <div class="empty-state">尚未选择文件</div>
+        </div>
+
+        <div class="merge-options">
+            <label class="checkbox-label">
+                <input type="checkbox" id="pageBreak" checked>
+                文档之间添加分页符
+            </label>
+            <div class="input-group">
+                <input type="text" id="outputName" placeholder="输出文件名 (可选)" value="merged.docx">
+            </div>
+        </div>
+
+        <div class="text-center">
+            <button class="btn-convert" id="mergeBtn" disabled style="margin-top: 20px;">
+                🔄 开始合并
+            </button>
+        </div>
+
+        <div id="mergeResult" style="display: none;"></div>
+    </div>
+</div>

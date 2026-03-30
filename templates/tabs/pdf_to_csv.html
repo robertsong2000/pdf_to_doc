@@ -1,0 +1,120 @@
+<!-- Tab Content: PDF to CSV -->
+<div class="tab-content" id="pdf-to-csv">
+    <div style="padding: 20px;">
+        <div class="text-center mb-4">
+            <h1 style="display: inline-flex; align-items: center; font-size: 28px; color: #333; margin-bottom: 10px;">
+                <span style="font-size: 48px; color: #667eea; margin-right: 15px;">📊</span>
+                PDF 转 CSV 工具
+            </h1>
+            <p style="color: #666; margin-top: 10px;">从PDF文件中提取表格数据，保存为CSV格式</p>
+        </div>
+
+        <div class="upload-area" id="csvUploadArea">
+            <div class="upload-icon">☁️</div>
+            <h3>拖拽PDF文件到这里</h3>
+            <p class="text-muted">或者点击选择文件</p>
+            <button type="button" class="btn-outline-primary btn-lg">📁 选择文件</button>
+            <input type="file" id="csvFileInput" class="file-input" accept=".pdf">
+            <p class="text-muted mt-3 mb-0">支持最大 80MB 的PDF文件</p>
+        </div>
+
+        <div class="file-info hidden" id="csvFileInfo">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-danger">📄</span>
+                    <span id="csvFileName" class="fw-bold"></span>
+                    <span id="csvFileSize" class="text-muted ms-2"></span>
+                </div>
+                <button type="button" class="btn-outline-danger btn-sm" id="csvRemoveFile">✕ 移除</button>
+            </div>
+        </div>
+
+        <div class="page-range-container hidden" id="csvPageRangeContainer" style="margin-top: 20px; padding: 20px; background: #f8f9ff; border-radius: 12px; border: 1px solid #e0e5ff;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 18px;">📋</span>
+                <span style="font-weight: 600; color: #333;">页码范围</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="csvPageMode" value="all" checked style="accent-color: #667eea;">
+                    全部页面
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="csvPageMode" value="range" style="accent-color: #667eea;">
+                    指定页码
+                </label>
+            </div>
+            <div id="csvPageRangeInputs" style="display: none; margin-top: 12px; align-items: center; gap: 8px;">
+                <span style="color: #555; font-size: 14px;">第</span>
+                <input type="number" id="csvStartPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
+                <span style="color: #555; font-size: 14px;">页到第</span>
+                <input type="number" id="csvEndPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
+                <span style="color: #555; font-size: 14px;">页</span>
+            </div>
+
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e5ff;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <span style="font-size: 18px;">📁</span>
+                    <span style="font-weight: 600; color: #333;">输出格式</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                        <input type="radio" name="csvOutputMode" value="single_csv" checked style="accent-color: #667eea;">
+                        合并为一个 CSV 文件
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                        <input type="radio" name="csvOutputMode" value="separate_zip" style="accent-color: #667eea;">
+                        每个表格单独文件 (ZIP)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <button type="button" class="btn-convert" id="csvExtractBtn" disabled>
+                📊 开始提取
+            </button>
+        </div>
+
+        <div class="progress-container" id="csvProgressContainer">
+            <div class="progress-header">
+                <div class="progress-text">
+                    <span class="progress-percentage" id="csvProgressPercentage">0%</span>
+                    <span class="progress-label">提取进度</span>
+                </div>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="csvProgressBar" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div class="status-message info" id="csvStatusMessage">
+                ℹ️ <span id="csvStatusText">准备提取...</span>
+            </div>
+        </div>
+
+        <div class="text-center hidden" id="csvDownloadContainer">
+            <h4 class="text-success mb-3" id="csvDownloadTitle">✅ 表格提取完成！</h4>
+            <p id="csvTableCount" class="text-muted"></p>
+            <button type="button" class="download-btn" id="csvDownloadBtn">
+                ⬇️ 下载文件
+            </button>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div>📊</div>
+                <h6>智能提取</h6>
+                <p class="text-muted mb-0">自动识别表格</p>
+            </div>
+            <div class="feature">
+                <div>📝</div>
+                <h6>多格式支持</h6>
+                <p class="text-muted mb-0">CSV / ZIP 导出</p>
+            </div>
+            <div class="feature">
+                <div>🔒</div>
+                <h6>安全可靠</h6>
+                <p class="text-muted mb-0">文件自动清理</p>
+            </div>
+        </div>
+    </div>
+</div>

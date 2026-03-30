@@ -1,0 +1,96 @@
+<!-- Tab Content: DOCX to CSV -->
+<div class="tab-content" id="docx-to-csv">
+    <div style="padding: 20px;">
+        <div class="text-center mb-4">
+            <h1 style="display: inline-flex; align-items: center; font-size: 28px; color: #333; margin-bottom: 10px;">
+                <span style="font-size: 48px; color: #667eea; margin-right: 15px;">📋</span>
+                DOCX 转 CSV 工具
+            </h1>
+            <p style="color: #666; margin-top: 10px;">从DOCX文件中直接提取表格数据，保存为CSV格式</p>
+        </div>
+
+        <div class="upload-area" id="docxCsvUploadArea">
+            <div class="upload-icon">☁️</div>
+            <h3>拖拽DOCX文件到这里</h3>
+            <p class="text-muted">或者点击选择文件</p>
+            <button type="button" class="btn-outline-primary btn-lg">📁 选择文件</button>
+            <input type="file" id="docxCsvFileInput" class="file-input" accept=".docx">
+            <p class="text-muted mt-3 mb-0">支持 .docx 格式文件</p>
+        </div>
+
+        <div class="file-info hidden" id="docxCsvFileInfo">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span style="color: #667eea;">📄</span>
+                    <span id="docxCsvFileNameDisplay" class="fw-bold"></span>
+                    <span id="docxCsvFileSizeDisplay" class="text-muted ms-2"></span>
+                </div>
+                <button type="button" class="btn-outline-danger btn-sm" id="docxCsvRemoveFile">✕ 移除</button>
+            </div>
+        </div>
+
+        <div class="page-range-container hidden" id="docxCsvOptionsContainer" style="margin-top: 20px; padding: 20px; background: #f8f9ff; border-radius: 12px; border: 1px solid #e0e5ff;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 18px;">📁</span>
+                <span style="font-weight: 600; color: #333;">输出格式</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="docxCsvOutputMode" value="single_csv" checked style="accent-color: #667eea;">
+                    合并为一个 CSV 文件
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="docxCsvOutputMode" value="separate_zip" style="accent-color: #667eea;">
+                    每个表格单独文件 (ZIP)
+                </label>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <button type="button" class="btn-convert" id="docxCsvExtractBtn" disabled>
+                📋 开始提取
+            </button>
+        </div>
+
+        <div class="progress-container" id="docxCsvProgressContainer">
+            <div class="progress-header">
+                <div class="progress-text">
+                    <span class="progress-percentage" id="docxCsvProgressPercentage">0%</span>
+                    <span class="progress-label">提取进度</span>
+                </div>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="docxCsvProgressBar" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div class="status-message info" id="docxCsvStatusMessage">
+                ℹ️ <span id="docxCsvStatusText">准备提取...</span>
+            </div>
+        </div>
+
+        <div class="text-center hidden" id="docxCsvDownloadContainer">
+            <h4 class="text-success mb-3" id="docxCsvDownloadTitle">✅ 表格提取完成！</h4>
+            <p id="docxCsvTableCount" class="text-muted"></p>
+            <button type="button" class="download-btn" id="docxCsvDownloadBtn">
+                ⬇️ 下载文件
+            </button>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div>📋</div>
+                <h6>直接提取</h6>
+                <p class="text-muted mb-0">DOCX原生表格</p>
+            </div>
+            <div class="feature">
+                <div>🎯</div>
+                <h6>精准识别</h6>
+                <p class="text-muted mb-0">合并单元格正确处理</p>
+            </div>
+            <div class="feature">
+                <div>🔒</div>
+                <h6>安全可靠</h6>
+                <p class="text-muted mb-0">文件自动清理</p>
+            </div>
+        </div>
+    </div>
+</div>

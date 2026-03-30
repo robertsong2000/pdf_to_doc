@@ -1,0 +1,144 @@
+<!-- Tab Content: PDF to DOCX Converter -->
+<div class="tab-content active" id="pdf-converter">
+    <div class="converter-container" style="box-shadow: none; margin: 0; padding: 0; max-width: none;">
+        <div class="text-center mb-4">
+            <h1 class="d-inline-flex align-items-center">
+                <span class="title-icon">📄</span>
+                PDF to DOCX Converter
+            </h1>
+            <p class="text-muted mt-2">快速、简单、安全的PDF转DOCX在线转换工具</p>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">☁️</div>
+            <h3>拖拽PDF文件到这里</h3>
+            <p class="text-muted">或者点击选择文件</p>
+            <button type="button" class="btn-outline-primary btn-lg">
+                📁 选择文件
+            </button>
+            <input type="file" id="fileInput" class="file-input" accept=".pdf">
+            <p class="text-muted mt-3 mb-0">支持最大 80MB 的PDF文件</p>
+        </div>
+
+        <div class="file-info hidden" id="fileInfo">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-danger">📄</span>
+                    <span id="fileName" class="fw-bold"></span>
+                    <span id="fileSize" class="text-muted ms-2"></span>
+                </div>
+                <button type="button" class="btn-outline-danger btn-sm" id="removeFile">
+                    ✕ 移除
+                </button>
+            </div>
+        </div>
+
+        <div class="page-range-container hidden" id="pageRangeContainer" style="margin-top: 20px; padding: 20px; background: #f8f9ff; border-radius: 12px; border: 1px solid #e0e5ff;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 18px;">📋</span>
+                <span style="font-weight: 600; color: #333;">页码范围</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="pageMode" value="all" id="pageModeAll" checked style="accent-color: #667eea;">
+                    全部页面
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="pageMode" value="range" id="pageModeRange" style="accent-color: #667eea;">
+                    指定页码
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="pageMode" value="section" id="pageModeSection" style="accent-color: #667eea;">
+                    指定章节
+                </label>
+            </div>
+            <div class="page-range-inputs" id="pageRangeInputs" style="display: none; margin-top: 12px; align-items: center; gap: 8px;">
+                <span style="color: #555; font-size: 14px;">第</span>
+                <input type="number" id="startPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
+                <span style="color: #555; font-size: 14px;">页到第</span>
+                <input type="number" id="endPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
+                <span style="color: #555; font-size: 14px;">页</span>
+            </div>
+            <div class="section-range-inputs" id="sectionRangeInputs" style="display: none; margin-top: 12px;">
+                <div id="sectionLoading" style="display: none; text-align: center; padding: 15px; color: #667eea;">
+                    <span class="loading-spinner"></span> 正在分析PDF章节结构...
+                </div>
+                <div id="sectionNone" style="display: none; padding: 15px; background: #fff3cd; border-radius: 8px; color: #856404;">
+                    未在PDF中检测到章节编号，请使用"指定页码"模式
+                </div>
+                <div id="sectionSelection" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                        <span style="color: #555; font-size: 14px;">从章节</span>
+                        <input type="text" id="startSection" list="sectionSuggestions" placeholder="例如 5.15.1.1.4.2" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
+                        <span style="color: #555; font-size: 14px;">到章节</span>
+                        <input type="text" id="endSection" list="sectionSuggestions" placeholder="例如 5.15.1.1.4.4" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
+                        <button type="button" id="resolveSectionBtn" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
+                            解析
+                        </button>
+                    </div>
+                    <datalist id="sectionSuggestions"></datalist>
+                    <div id="resolvedRangeDisplay" style="display: none; padding: 10px; background: #d4edda; border-radius: 8px; color: #155724; font-size: 14px;">
+                        对应页码范围: <strong id="resolvedRangeText"></strong>
+                    </div>
+                    <div id="resolvedRangeError" style="display: none; padding: 10px; background: #f8d7da; border-radius: 8px; color: #721c24; font-size: 14px; margin-top: 8px;">
+                    </div>
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; color: #667eea; font-size: 13px;">
+                            查看检测到的章节列表 (<span id="sectionCount">0</span> 个章节)
+                        </summary>
+                        <div id="sectionList" style="max-height: 300px; overflow-y: auto; margin-top: 8px; padding: 10px; background: #f8f9ff; border-radius: 8px; border: 1px solid #e0e5ff; font-size: 13px;">
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <button type="button" class="btn-convert" id="convertBtn" disabled>
+                ✨ 开始转换
+            </button>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-header">
+                <div class="progress-text">
+                    <span class="progress-percentage" id="progressPercentage">0%</span>
+                    <span class="progress-label">转换进度</span>
+                </div>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%"></div>
+            </div>
+            <div class="status-message info" id="statusMessage">
+                ℹ️ <span id="statusText">准备转换...</span>
+            </div>
+        </div>
+
+        <div class="text-center hidden" id="downloadContainer">
+            <h4 class="text-success mb-3">
+                ✅ 转换完成！
+            </h4>
+            <button type="button" class="download-btn" id="downloadBtn">
+                ⬇️ 下载DOCX文件
+            </button>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div>⚡</div>
+                <h6>快速转换</h6>
+                <p class="text-muted mb-0">秒级处理速度</p>
+            </div>
+            <div class="feature">
+                <div>🔒</div>
+                <h6>安全可靠</h6>
+                <p class="text-muted mb-0">文件自动清理</p>
+            </div>
+            <div class="feature">
+                <div>📝</div>
+                <h6>保持格式</h6>
+                <p class="text-muted mb-0">保留原始布局</p>
+            </div>
+        </div>
+    </div>
+</div>
