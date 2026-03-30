@@ -1,3 +1,4 @@
+setuptools
 pdf2docx==0.5.6
 Flask==2.3.3
 Werkzeug==2.3.7
