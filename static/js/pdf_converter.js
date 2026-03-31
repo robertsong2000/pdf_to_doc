@@ -76,17 +76,21 @@ resolveSectionBtn.addEventListener('click', async () => {
             body: formData
         });
 
-        const result = await response.json();
-
         if (!response.ok) {
+            let errorMsg = '章节解析失败';
+            try {
+                const errResult = await response.json();
+                errorMsg = errResult.error || errorMsg;
+            } catch (e) {
+                errorMsg = `服务器错误 (${response.status})`;
+            }
             resolvedRangeError.style.display = 'block';
-            resolvedRangeError.textContent = result.error || '章节解析失败';
+            resolvedRangeError.textContent = errorMsg;
             resolvedRangeDisplay.style.display = 'none';
             return;
         }
 
-        resolvedStartPage = result.start_page;
-        resolvedEndPage = result.end_page;
+        const result = await response.json();
 
         resolvedRangeDisplay.style.display = 'block';
         resolvedRangeText.textContent = result.resolved_range;

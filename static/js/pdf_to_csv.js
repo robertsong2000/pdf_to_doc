@@ -73,14 +73,21 @@ csvResolveSectionBtn.addEventListener('click', async () => {
             body: formData
         });
 
-        const result = await response.json();
-
         if (!response.ok) {
+            let errorMsg = '章节解析失败';
+            try {
+                const errResult = await response.json();
+                errorMsg = errResult.error || errorMsg;
+            } catch (e) {
+                errorMsg = `服务器错误 (${response.status})`;
+            }
             csvResolvedRangeError.style.display = 'block';
-            csvResolvedRangeError.textContent = result.error || '章节解析失败';
+            csvResolvedRangeError.textContent = errorMsg;
             csvResolvedRangeDisplay.style.display = 'none';
             return;
         }
+
+        const result = await response.json();
 
         csvResolvedStartPage = result.start_page;
         csvResolvedEndPage = result.end_page;
