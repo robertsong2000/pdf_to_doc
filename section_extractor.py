@@ -6,8 +6,10 @@ PDF章节号提取器
 """
 
 import re
+import gc
 from typing import Dict, List, Tuple, Optional
 import pdfplumber
+import fitz  # PyMuPDF - available via pdf2docx dependency
 
 
 class PdfSectionExtractor:
@@ -209,15 +211,17 @@ class PdfSectionExtractor:
     def _extract_from_text(self, progress_callback=None) -> Dict[str, dict]:
         """
         Fall back: scan PDF text on every page to find section numbers.
-        Slower but works for PDFs without bookmarks.
+        Uses PyMuPDF (fitz) for low memory usage.
         """
         sections = {}
 
-        with pdfplumber.open(self.pdf_path) as pdf:
-            self._total_pages = len(pdf.pages)
+        doc = fitz.open(self.pdf_path)
+        try:
+            self._total_pages = len(doc)
 
-            for i, page in enumerate(pdf.pages):
-                text = page.extract_text()
+            for i in range(self._total_pages):
+                page = doc[i]
+                text = page.get_text()
                 if not text:
                     continue
 
@@ -253,6 +257,10 @@ class PdfSectionExtractor:
 
                 if progress_callback:
                     progress_callback(page_num, self._total_pages, len(sections))
+
+        finally:
+            doc.close()
+            gc.collect()
 
         return sections
 
