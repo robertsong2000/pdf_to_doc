@@ -341,7 +341,8 @@ async function pollConversionStatus() {
             } else if (status.status === 'completed') {
                 updateDetailedStatus(status);
                 statusMessage.className = 'status-message success';
-                convertBtn.innerHTML = '✅ 转换完成';
+                convertBtn.innerHTML = '✨ 重新转换';
+                convertBtn.disabled = false;
                 downloadContainer.classList.remove('hidden');
                 isConverting = false;
 
