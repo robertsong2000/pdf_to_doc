@@ -93,9 +93,10 @@ def extract_table_grid(table) -> List[List[str]]:
                         text = grid[r][col_pos]
                         break
 
-            # 填充网格：水平跨度内的所有位置都填入文本
-            for c in range(col_pos, min(col_pos + grid_span, grid_cols)):
-                grid[row_idx][c] = text
+            # 填充网格：仅第一列填入文本，其余跨列留空
+            grid[row_idx][col_pos] = text
+            for c in range(col_pos + 1, min(col_pos + grid_span, grid_cols)):
+                grid[row_idx][c] = ''
 
             col_pos += grid_span
 
@@ -170,8 +171,9 @@ def _extract_table_grid_from_element(tbl_element) -> List[List[str]]:
                         text = grid[r][col_pos]
                         break
 
-            for c in range(col_pos, min(col_pos + grid_span, grid_cols)):
-                grid[row_idx][c] = text
+            grid[row_idx][col_pos] = text
+            for c in range(col_pos + 1, min(col_pos + grid_span, grid_cols)):
+                grid[row_idx][c] = ''
 
             col_pos += grid_span
 
