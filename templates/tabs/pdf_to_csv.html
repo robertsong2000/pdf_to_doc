@@ -43,6 +43,10 @@
                     <input type="radio" name="csvPageMode" value="range" style="accent-color: #667eea;">
                     指定页码
                 </label>
+                <label style="display: flex; align-items: center; gap: 6px; color: #555; font-size: 14px; cursor: pointer;">
+                    <input type="radio" name="csvPageMode" value="section" style="accent-color: #667eea;">
+                    指定章节
+                </label>
             </div>
             <div id="csvPageRangeInputs" style="display: none; margin-top: 12px; align-items: center; gap: 8px;">
                 <span style="color: #555; font-size: 14px;">第</span>
@@ -50,6 +54,22 @@
                 <span style="color: #555; font-size: 14px;">页到第</span>
                 <input type="number" id="csvEndPage" min="1" value="1" style="width: 70px; padding: 6px 10px; border: 1px solid #d0d5ff; border-radius: 8px; text-align: center; font-size: 14px; outline: none;">
                 <span style="color: #555; font-size: 14px;">页</span>
+            </div>
+            <div id="csvSectionRangeInputs" style="display: none; margin-top: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                    <span style="color: #555; font-size: 14px;">从章节</span>
+                    <input type="text" id="csvStartSection" placeholder="例如 5.15.1.1.4.2" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
+                    <span style="color: #555; font-size: 14px;">到章节</span>
+                    <input type="text" id="csvEndSection" placeholder="例如 5.15.1.1.4.4" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
+                    <button type="button" id="csvResolveSectionBtn" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
+                        解析
+                    </button>
+                </div>
+                <div id="csvResolvedRangeDisplay" style="display: none; padding: 10px; background: #d4edda; border-radius: 8px; color: #155724; font-size: 14px;">
+                    对应页码范围: <strong id="csvResolvedRangeText"></strong>
+                </div>
+                <div id="csvResolvedRangeError" style="display: none; padding: 10px; background: #f8d7da; border-radius: 8px; color: #721c24; font-size: 14px; margin-top: 8px;">
+                </div>
             </div>
 
             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e5ff;">

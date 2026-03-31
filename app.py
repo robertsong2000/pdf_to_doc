@@ -31,10 +31,51 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'outputs'
 app.config['SECRET_KEY'] = 'your-secret-key-here'  # Change this in production
+app.config['FILE_MAX_AGE'] = 28800  # 文件最大保留时间（秒），默认8小时
+app.config['CLEANUP_INTERVAL'] = 600  # 定时清理间隔（秒），默认10分钟
 
 # Ensure folders exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+
+
+def cleanup_old_files():
+    """定期清理 uploads 和 outputs 中的过期文件"""
+    max_age = app.config['FILE_MAX_AGE']
+    for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
+        if not os.path.exists(folder):
+            continue
+        for entry in os.listdir(folder):
+            file_path = os.path.join(folder, entry)
+            try:
+                if os.path.isfile(file_path):
+                    if os.path.getctime(file_path) < time.time() - max_age:
+                        os.remove(file_path)
+                        print(f"[清理] 已删除过期文件: {file_path}")
+                elif os.path.isdir(file_path):
+                    # 处理 merge session 目录
+                    dir_ctime = os.path.getctime(file_path)
+                    if dir_ctime < time.time() - max_age:
+                        import shutil
+                        shutil.rmtree(file_path)
+                        print(f"[清理] 已删除过期目录: {file_path}")
+            except Exception as e:
+                print(f"[清理] 删除失败 {file_path}: {e}")
+
+
+def cleanup_scheduler():
+    """后台定时清理线程"""
+    while True:
+        time.sleep(app.config['CLEANUP_INTERVAL'])
+        try:
+            cleanup_old_files()
+        except Exception as e:
+            print(f"[清理] 定时清理出错: {e}")
+
+
+# 启动后台清理线程（daemon 模式，主进程退出时自动结束）
+cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
+cleanup_thread.start()
 
 # Allowed extensions
 ALLOWED_EXTENSIONS = {'pdf'}
@@ -582,6 +623,28 @@ def cleanup_files(task_id):
 
     except Exception as e:
         return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
+
+@app.route('/api/pdf/page-count', methods=['POST'])
+def get_pdf_page_count():
+    """Get PDF total page count"""
+    try:
+        if not request.files or 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+        if file.filename == '' or not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file'}), 400
+
+        import fitz
+        pdf_bytes = file.read()
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page_count = doc.page_count
+        doc.close()
+
+        return jsonify({'page_count': page_count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/heartbeat/<task_id>', methods=['POST'])
 def heartbeat(task_id):
@@ -1267,15 +1330,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     # Clean up old files on startup
-    try:
-        for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
-            for filename in os.listdir(folder):
-                file_path = os.path.join(folder, filename)
-                # Remove files older than 1 hour
-                if os.path.getctime(file_path) < time.time() - 3600:
-                    os.remove(file_path)
-    except:
-        pass
+    cleanup_old_files()
 
     print("=" * 60)
     print("文档工具集启动中...")

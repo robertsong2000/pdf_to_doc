@@ -4,6 +4,9 @@
 let csvSelectedFile = null;
 let csvTaskId = null;
 let isExtracting = false;
+let csvTotalPages = 0;
+let csvResolvedStartPage = null;
+let csvResolvedEndPage = null;
 
 const csvUploadArea = document.getElementById('csvUploadArea');
 const csvFileInput = document.getElementById('csvFileInput');
@@ -13,6 +16,8 @@ const csvFileName = document.getElementById('csvFileName');
 const csvFileSize = document.getElementById('csvFileSize');
 const csvRemoveFileBtn = document.getElementById('csvRemoveFile');
 const csvPageRangeContainer = document.getElementById('csvPageRangeContainer');
+const csvPageRangeInputs = document.getElementById('csvPageRangeInputs');
+const csvSectionRangeInputs = document.getElementById('csvSectionRangeInputs');
 const csvProgressContainer = document.getElementById('csvProgressContainer');
 const csvProgressBar = document.getElementById('csvProgressBar');
 const csvProgressPercentage = document.getElementById('csvProgressPercentage');
@@ -22,13 +27,76 @@ const csvDownloadContainer = document.getElementById('csvDownloadContainer');
 const csvDownloadBtn = document.getElementById('csvDownloadBtn');
 const csvDownloadTitle = document.getElementById('csvDownloadTitle');
 const csvTableCount = document.getElementById('csvTableCount');
+const csvStartSectionInput = document.getElementById('csvStartSection');
+const csvEndSectionInput = document.getElementById('csvEndSection');
+const csvResolveSectionBtn = document.getElementById('csvResolveSectionBtn');
+const csvResolvedRangeDisplay = document.getElementById('csvResolvedRangeDisplay');
+const csvResolvedRangeText = document.getElementById('csvResolvedRangeText');
+const csvResolvedRangeError = document.getElementById('csvResolvedRangeError');
 
 // Page mode toggle for CSV tab
 document.querySelectorAll('input[name="csvPageMode"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
-        document.getElementById('csvPageRangeInputs').style.display =
-            e.target.value === 'range' ? 'flex' : 'none';
+        if (e.target.value === 'range') {
+            csvPageRangeInputs.style.display = 'flex';
+            csvSectionRangeInputs.style.display = 'none';
+        } else if (e.target.value === 'section') {
+            csvPageRangeInputs.style.display = 'none';
+            csvSectionRangeInputs.style.display = 'block';
+        } else {
+            csvPageRangeInputs.style.display = 'none';
+            csvSectionRangeInputs.style.display = 'none';
+        }
     });
+});
+
+// Resolve section button
+csvResolveSectionBtn.addEventListener('click', async () => {
+    if (!csvSelectedFile || !csvStartSectionInput.value || !csvEndSectionInput.value) {
+        csvResolvedRangeError.style.display = 'block';
+        csvResolvedRangeError.textContent = '请输入起始和结束章节号';
+        csvResolvedRangeDisplay.style.display = 'none';
+        return;
+    }
+
+    csvResolveSectionBtn.disabled = true;
+    csvResolveSectionBtn.textContent = '解析中...';
+
+    try {
+        const formData = new FormData();
+        formData.append('file', csvSelectedFile);
+        formData.append('start_section', csvStartSectionInput.value.trim());
+        formData.append('end_section', csvEndSectionInput.value.trim());
+
+        const response = await fetch('/api/sections/resolve', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            csvResolvedRangeError.style.display = 'block';
+            csvResolvedRangeError.textContent = result.error || '章节解析失败';
+            csvResolvedRangeDisplay.style.display = 'none';
+            return;
+        }
+
+        csvResolvedStartPage = result.start_page;
+        csvResolvedEndPage = result.end_page;
+
+        csvResolvedRangeDisplay.style.display = 'block';
+        csvResolvedRangeText.textContent = result.resolved_range;
+        csvResolvedRangeError.style.display = 'none';
+
+    } catch (err) {
+        csvResolvedRangeError.style.display = 'block';
+        csvResolvedRangeError.textContent = '解析请求失败: ' + err.message;
+        csvResolvedRangeDisplay.style.display = 'none';
+    } finally {
+        csvResolveSectionBtn.disabled = false;
+        csvResolveSectionBtn.textContent = '解析';
+    }
 });
 
 // Upload area interactions
@@ -70,6 +138,7 @@ function handleCsvFileSelect(file) {
     csvPageRangeContainer.classList.remove('hidden');
     csvExtractBtn.disabled = false;
     resetCsvProgress();
+    fetchCsvPageCount(file);
 }
 
 function resetCsvUpload() {
@@ -80,6 +149,16 @@ function resetCsvUpload() {
     csvPageRangeContainer.classList.add('hidden');
     csvExtractBtn.disabled = true;
     isExtracting = false;
+    csvTotalPages = 0;
+
+    // Reset section state
+    csvResolvedStartPage = null;
+    csvResolvedEndPage = null;
+    if (csvStartSectionInput) csvStartSectionInput.value = '';
+    if (csvEndSectionInput) csvEndSectionInput.value = '';
+    if (csvResolvedRangeDisplay) csvResolvedRangeDisplay.style.display = 'none';
+    if (csvResolvedRangeError) csvResolvedRangeError.style.display = 'none';
+
     resetCsvProgress();
 }
 
@@ -96,12 +175,17 @@ async function startCsvExtraction() {
     const formData = new FormData();
     formData.append('file', csvSelectedFile);
 
-    // Page range
+    // Page range / section mode
     const csvPageMode = document.querySelector('input[name="csvPageMode"]:checked').value;
     if (csvPageMode === 'range') {
         const s = parseInt(document.getElementById('csvStartPage').value);
         const e = parseInt(document.getElementById('csvEndPage').value);
         if (s > 0 && e > 0 && e >= s) {
+            if (csvTotalPages > 0 && (s > csvTotalPages || e > csvTotalPages)) {
+                alert(`页码超出范围，该PDF共 ${csvTotalPages} 页`);
+                isExtracting = false;
+                return;
+            }
             formData.append('start_page', s);
             formData.append('end_page', e);
         } else {
@@ -109,11 +193,29 @@ async function startCsvExtraction() {
             isExtracting = false;
             return;
         }
+    } else if (csvPageMode === 'section') {
+        if (!csvResolvedStartPage || !csvResolvedEndPage) {
+            alert('请先点击"解析"按钮确认章节对应的页码范围');
+            isExtracting = false;
+            return;
+        }
+        // Validate resolved section pages against total pages
+        if (csvTotalPages > 0 && (csvResolvedStartPage > csvTotalPages || csvResolvedEndPage > csvTotalPages)) {
+            alert(`解析的页码超出范围，该PDF共 ${csvTotalPages} 页`);
+            isExtracting = false;
+            return;
+        }
+        formData.append('start_page', csvResolvedStartPage);
+        formData.append('end_page', csvResolvedEndPage);
     }
 
     // Output mode
     const outputMode = document.querySelector('input[name="csvOutputMode"]:checked').value;
     formData.append('output_mode', outputMode);
+
+    // Hide download container and reset task ID from previous extraction
+    csvDownloadContainer.classList.add('hidden');
+    csvTaskId = null;
 
     csvExtractBtn.disabled = true;
     csvExtractBtn.innerHTML = '<span class="loading-spinner"></span>提取中...';
@@ -189,5 +291,36 @@ async function cleanupCsvFiles() {
     if (csvTaskId) {
         try { await fetch(`/api/csv/cleanup/${csvTaskId}`, { method: 'DELETE' }); }
         catch (e) { console.error('CSV cleanup failed:', e); }
+    }
+}
+
+async function fetchCsvPageCount(file) {
+    csvTotalPages = 0;
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch('/api/pdf/page-count', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (response.ok && result.page_count) {
+            csvTotalPages = result.page_count;
+            // Update input max
+            const csvEndPage = document.getElementById('csvEndPage');
+            const csvStartPage = document.getElementById('csvStartPage');
+            if (csvEndPage) csvEndPage.max = csvTotalPages;
+            if (csvStartPage) csvStartPage.max = csvTotalPages;
+            // Show total pages hint
+            let hint = document.getElementById('csvPageCountHint');
+            if (!hint) {
+                hint = document.createElement('div');
+                hint.id = 'csvPageCountHint';
+                hint.style.cssText = 'font-size: 0.85em; color: #667eea; margin-top: 8px;';
+                const inputsDiv = document.getElementById('csvPageRangeInputs');
+                if (inputsDiv) inputsDiv.parentNode.insertBefore(hint, inputsDiv.nextSibling);
+                else csvPageRangeContainer.appendChild(hint);
+            }
+            hint.textContent = `该PDF共 ${csvTotalPages} 页`;
+        }
+    } catch (e) {
+        console.warn('Failed to get page count:', e);
     }
 }

@@ -105,6 +105,10 @@ async function startDocxCsvExtraction() {
     const outputMode = document.querySelector('input[name="docxCsvOutputMode"]:checked').value;
     formData.append('output_mode', outputMode);
 
+    // Hide download container and reset task ID from previous extraction
+    docxCsvDownloadContainer.classList.add('hidden');
+    docxCsvTaskId = null;
+
     docxCsvExtractBtn.disabled = true;
     docxCsvExtractBtn.innerHTML = '<span class="loading-spinner"></span>提取中...';
     docxCsvProgressContainer.classList.remove('hidden');

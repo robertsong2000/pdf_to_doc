@@ -4,6 +4,7 @@
 let selectedFile = null;
 let currentTaskId = null;
 let isConverting = false;
+let pdfTotalPages = 0;
 
 const uploadArea = document.getElementById('uploadArea');
 const fileInput = document.getElementById('fileInput');
@@ -179,6 +180,9 @@ function handleFileSelect(file) {
     convertBtn.disabled = false;
 
     resetProgress();
+
+    // Fetch PDF page count
+    fetchPdfPageCount(file);
 }
 
 function resetUpload() {
@@ -189,6 +193,7 @@ function resetUpload() {
     pageRangeContainer.classList.add('hidden');
     convertBtn.disabled = true;
     isConverting = false;
+    pdfTotalPages = 0;
 
     // Reset section state
     resolvedStartPage = null;
@@ -226,6 +231,14 @@ async function convertFile() {
         const startVal = parseInt(startPageInput.value);
         const endVal = parseInt(endPageInput.value);
         if (startVal > 0 && endVal > 0 && endVal >= startVal) {
+            // Validate against total pages
+            if (pdfTotalPages > 0 && (startVal > pdfTotalPages || endVal > pdfTotalPages)) {
+                alert(`页码超出范围，该PDF共 ${pdfTotalPages} 页`);
+                isConverting = false;
+                convertBtn.disabled = false;
+                convertBtn.innerHTML = '✨ 开始转换';
+                return;
+            }
             formData.append('start_page', startVal);
             formData.append('end_page', endVal);
         } else {
@@ -243,9 +256,21 @@ async function convertFile() {
             convertBtn.innerHTML = '✨ 开始转换';
             return;
         }
+        // Validate resolved section pages against total pages
+        if (pdfTotalPages > 0 && (resolvedStartPage > pdfTotalPages || resolvedEndPage > pdfTotalPages)) {
+            alert(`解析的页码超出范围，该PDF共 ${pdfTotalPages} 页`);
+            isConverting = false;
+            convertBtn.disabled = false;
+            convertBtn.innerHTML = '✨ 开始转换';
+            return;
+        }
         formData.append('start_page', resolvedStartPage);
         formData.append('end_page', resolvedEndPage);
     }
+
+    // Hide download container and reset task ID from previous conversion
+    downloadContainer.classList.add('hidden');
+    currentTaskId = null;
 
     convertBtn.disabled = true;
     convertBtn.innerHTML = '<span class="loading-spinner"></span>处理中...';
@@ -490,5 +515,34 @@ async function cleanupFiles() {
         } catch (error) {
             console.error('Cleanup failed:', error);
         }
+    }
+}
+
+async function fetchPdfPageCount(file) {
+    pdfTotalPages = 0;
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await fetch('/api/pdf/page-count', { method: 'POST', body: formData });
+        const result = await response.json();
+        if (response.ok && result.page_count) {
+            pdfTotalPages = result.page_count;
+            // Update endPageInput max attribute
+            if (endPageInput) endPageInput.max = pdfTotalPages;
+            if (startPageInput) startPageInput.max = pdfTotalPages;
+            // Show total pages hint
+            let hint = document.getElementById('pdfPageCountHint');
+            if (!hint) {
+                hint = document.createElement('div');
+                hint.id = 'pdfPageCountHint';
+                hint.style.cssText = 'font-size: 0.85em; color: #667eea; margin-top: 8px;';
+                const inputsDiv = document.getElementById('pageRangeInputs');
+                if (inputsDiv) inputsDiv.parentNode.insertBefore(hint, inputsDiv.nextSibling);
+                else pageRangeContainer.appendChild(hint);
+            }
+            hint.textContent = `该PDF共 ${pdfTotalPages} 页`;
+        }
+    } catch (e) {
+        console.warn('Failed to get page count:', e);
     }
 }
