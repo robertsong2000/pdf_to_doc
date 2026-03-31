@@ -156,7 +156,8 @@ async function pollDocxCsvStatus() {
                     docxCsvDownloadContainer.classList.remove('hidden');
                     docxCsvDownloadBtn.classList.remove('hidden');
                 }
-                docxCsvExtractBtn.innerHTML = '✅ 提取完成';
+                docxCsvExtractBtn.innerHTML = '📋 重新提取';
+                docxCsvExtractBtn.disabled = false;
                 isDocxCsvExtracting = false;
             } else if (data.status === 'error') {
                 docxCsvStatusMessage.className = 'status-message error';

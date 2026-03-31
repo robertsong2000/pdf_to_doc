@@ -835,8 +835,6 @@ def extract_csv_task(task_id, pdf_path, output_dir, start_page, end_page, output
 
         extractor = PdfTableExtractor(pdf_path)
         tables = extractor.extract_tables(start_page, end_page, progress_callback)
-        del extractor
-        gc.collect()
 
         if not tables:
             csv_status[task_id] = {
@@ -847,6 +845,8 @@ def extract_csv_task(task_id, pdf_path, output_dir, start_page, end_page, output
                 'tables_found': 0,
                 'no_tables': True
             }
+            del extractor
+            gc.collect()
             return
 
         csv_status[task_id].update({'progress': 90, 'message': '正在保存CSV文件...'})
@@ -863,6 +863,9 @@ def extract_csv_task(task_id, pdf_path, output_dir, start_page, end_page, output
             output_path = os.path.join(output_dir, output_filename)
             extractor.save_as_single_csv(tables, output_path)
             download_name = f'{base_name}_tables.csv'
+
+        del extractor
+        gc.collect()
 
         csv_status[task_id] = {
             'status': 'completed',
@@ -1086,8 +1089,6 @@ def extract_docx_csv():
 
                 extractor = DocxTableExtractor(docx_path)
                 tables = extractor.extract_tables()
-                del extractor
-                gc.collect()
 
                 if not tables:
                     docx_csv_status[task_id] = {
@@ -1098,6 +1099,8 @@ def extract_docx_csv():
                         'tables_found': 0,
                         'no_tables': True
                     }
+                    del extractor
+                    gc.collect()
                     return
 
                 docx_csv_status[task_id].update({
@@ -1117,6 +1120,9 @@ def extract_docx_csv():
                     output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
                     extractor.save_as_single_csv(tables, output_path)
                     download_name = f'{base_name}_tables.csv'
+
+                del extractor
+                gc.collect()
 
                 docx_csv_status[task_id] = {
                     'status': 'completed',

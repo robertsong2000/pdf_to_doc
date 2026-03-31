@@ -166,7 +166,8 @@ async function pollCsvStatus() {
                     csvDownloadContainer.classList.remove('hidden');
                     csvDownloadBtn.classList.remove('hidden');
                 }
-                csvExtractBtn.innerHTML = '✅ 提取完成';
+                csvExtractBtn.innerHTML = '📊 重新提取';
+                csvExtractBtn.disabled = false;
                 isExtracting = false;
             } else if (data.status === 'error') {
                 csvStatusMessage.className = 'status-message error';
