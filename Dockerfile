@@ -20,18 +20,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     libglib2.0-0 \
     libgomp1 \
-    libglapi-mesa \
-    libgl1-mesa-dri \
     libsm6 \
     libxext6 \
-    libxrender-dev \
-    libgthread-2.0-0 \
-    xvfb \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
-
-# Set environment variables for headless OpenCV
-ENV DISPLAY=:99
-ENV OPENCV_IO_ENABLE_OPENEXR=1
 
 # Install Python dependencies
 COPY requirements.txt .
@@ -59,5 +51,4 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/ || exit 1
 
-# Start virtual display and run the application
-CMD ["/bin/bash", "-c", "Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & python app.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "4", "--timeout", "300", "--max-requests", "100", "--max-requests-jitter", "10", "app:app"]

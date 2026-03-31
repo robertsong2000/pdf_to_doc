@@ -60,35 +60,19 @@
                 <span style="color: #555; font-size: 14px;">页</span>
             </div>
             <div class="section-range-inputs" id="sectionRangeInputs" style="display: none; margin-top: 12px;">
-                <div id="sectionLoading" style="display: none; text-align: center; padding: 15px; color: #667eea;">
-                    <span class="loading-spinner"></span> 正在分析PDF章节结构...
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                    <span style="color: #555; font-size: 14px;">从章节</span>
+                    <input type="text" id="startSection" placeholder="例如 5.15.1.1.4.2" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
+                    <span style="color: #555; font-size: 14px;">到章节</span>
+                    <input type="text" id="endSection" placeholder="例如 5.15.1.1.4.4" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
+                    <button type="button" id="resolveSectionBtn" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
+                        解析
+                    </button>
                 </div>
-                <div id="sectionNone" style="display: none; padding: 15px; background: #fff3cd; border-radius: 8px; color: #856404;">
-                    未在PDF中检测到章节编号，请使用"指定页码"模式
+                <div id="resolvedRangeDisplay" style="display: none; padding: 10px; background: #d4edda; border-radius: 8px; color: #155724; font-size: 14px;">
+                    对应页码范围: <strong id="resolvedRangeText"></strong>
                 </div>
-                <div id="sectionSelection" style="display: none;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
-                        <span style="color: #555; font-size: 14px;">从章节</span>
-                        <input type="text" id="startSection" list="sectionSuggestions" placeholder="例如 5.15.1.1.4.2" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
-                        <span style="color: #555; font-size: 14px;">到章节</span>
-                        <input type="text" id="endSection" list="sectionSuggestions" placeholder="例如 5.15.1.1.4.4" style="flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid #d0d5ff; border-radius: 8px; font-size: 14px; outline: none;">
-                        <button type="button" id="resolveSectionBtn" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer;">
-                            解析
-                        </button>
-                    </div>
-                    <datalist id="sectionSuggestions"></datalist>
-                    <div id="resolvedRangeDisplay" style="display: none; padding: 10px; background: #d4edda; border-radius: 8px; color: #155724; font-size: 14px;">
-                        对应页码范围: <strong id="resolvedRangeText"></strong>
-                    </div>
-                    <div id="resolvedRangeError" style="display: none; padding: 10px; background: #f8d7da; border-radius: 8px; color: #721c24; font-size: 14px; margin-top: 8px;">
-                    </div>
-                    <details style="margin-top: 10px;">
-                        <summary style="cursor: pointer; color: #667eea; font-size: 13px;">
-                            查看检测到的章节列表 (<span id="sectionCount">0</span> 个章节)
-                        </summary>
-                        <div id="sectionList" style="max-height: 300px; overflow-y: auto; margin-top: 8px; padding: 10px; background: #f8f9ff; border-radius: 8px; border: 1px solid #e0e5ff; font-size: 13px;">
-                        </div>
-                    </details>
+                <div id="resolvedRangeError" style="display: none; padding: 10px; background: #f8d7da; border-radius: 8px; color: #721c24; font-size: 14px; margin-top: 8px;">
                 </div>
             </div>
         </div>

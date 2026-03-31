@@ -19,6 +19,7 @@ import multiprocessing
 import subprocess
 import time
 import json
+import gc
 from pathlib import Path
 from pdf2docx import Converter
 
@@ -242,6 +243,8 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
             
             cv.convert(output_path, start=0, end=None)
             cv.close()
+            del cv
+            gc.collect()
 
             print(f"pdf2docx conversion completed for {pdf_path}")
 
@@ -293,6 +296,8 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
                               debug=False,
                               keep_layout=True)
                     cv.close()
+                    del cv
+                    gc.collect()
                     print(f"Alternative pdf2docx conversion completed for {pdf_path}")
 
                 except Exception as fallback_error:
@@ -724,6 +729,8 @@ def merge_docx():
             merger = DocxMerger(output_file, first_file=first_file)
             merger.merge_documents(valid_files, add_page_break=page_break)
             merger.save()
+            del merger
+            gc.collect()
 
             return jsonify({
                 'success': True,
@@ -828,6 +835,8 @@ def extract_csv_task(task_id, pdf_path, output_dir, start_page, end_page, output
 
         extractor = PdfTableExtractor(pdf_path)
         tables = extractor.extract_tables(start_page, end_page, progress_callback)
+        del extractor
+        gc.collect()
 
         if not tables:
             csv_status[task_id] = {
@@ -1077,6 +1086,8 @@ def extract_docx_csv():
 
                 extractor = DocxTableExtractor(docx_path)
                 tables = extractor.extract_tables()
+                del extractor
+                gc.collect()
 
                 if not tables:
                     docx_csv_status[task_id] = {

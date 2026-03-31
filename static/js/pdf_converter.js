@@ -26,19 +26,13 @@ const pageModeSection = document.getElementById('pageModeSection');
 const startPageInput = document.getElementById('startPage');
 const endPageInput = document.getElementById('endPage');
 const sectionRangeInputs = document.getElementById('sectionRangeInputs');
-const sectionLoading = document.getElementById('sectionLoading');
-const sectionNone = document.getElementById('sectionNone');
-const sectionSelection = document.getElementById('sectionSelection');
 const startSectionInput = document.getElementById('startSection');
 const endSectionInput = document.getElementById('endSection');
 const resolveSectionBtn = document.getElementById('resolveSectionBtn');
 const resolvedRangeDisplay = document.getElementById('resolvedRangeDisplay');
 const resolvedRangeText = document.getElementById('resolvedRangeText');
 const resolvedRangeError = document.getElementById('resolvedRangeError');
-const sectionListEl = document.getElementById('sectionList');
-const sectionCountEl = document.getElementById('sectionCount');
 
-let sectionSessionId = null;
 let resolvedStartPage = null;
 let resolvedEndPage = null;
 
@@ -51,9 +45,6 @@ document.querySelectorAll('input[name="pageMode"]').forEach(radio => {
         } else if (e.target.value === 'section') {
             pageRangeInputs.style.display = 'none';
             sectionRangeInputs.style.display = 'block';
-            if (!sectionSessionId) {
-                extractSections();
-            }
         } else {
             pageRangeInputs.style.display = 'none';
             sectionRangeInputs.style.display = 'none';
@@ -61,79 +52,9 @@ document.querySelectorAll('input[name="pageMode"]').forEach(radio => {
     });
 });
 
-// Section extraction
-async function extractSections() {
-    if (!selectedFile) return;
-
-    sectionLoading.style.display = 'block';
-    sectionNone.style.display = 'none';
-    sectionSelection.style.display = 'none';
-    resolvedRangeDisplay.style.display = 'none';
-    resolvedRangeError.style.display = 'none';
-
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
-    try {
-        const response = await fetch('/api/sections/extract', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-        sectionLoading.style.display = 'none';
-
-        if (!response.ok) {
-            sectionNone.style.display = 'block';
-            sectionNone.textContent = result.error || '章节提取失败';
-            return;
-        }
-
-        sectionSessionId = result.session_id;
-
-        if (result.sections.length === 0) {
-            sectionNone.style.display = 'block';
-            return;
-        }
-
-        sectionSelection.style.display = 'block';
-        sectionCountEl.textContent = result.total_sections;
-
-        // Build section list
-        let listHtml = '';
-        result.sections.forEach(s => {
-            const indent = s.level * 20;
-            const title = s.title ? ' - ' + s.title : '';
-            listHtml += '<div style="padding: 4px 8px; padding-left: ' + (indent + 8) + 'px; cursor: pointer; border-radius: 4px;" onmouseover="this.style.background=\'#e0e5ff\'" onmouseout="this.style.background=\'transparent\'" onclick="selectSection(\'' + s.number + '\')">' +
-                '<strong>' + s.number + '</strong>' + title + ' <span style="color: #999;">(第' + s.page + '页)</span></div>';
-        });
-        sectionListEl.innerHTML = listHtml;
-
-        // Populate datalist for autocomplete
-        const datalist = document.getElementById('sectionSuggestions');
-        datalist.innerHTML = result.sections.map(s =>
-            '<option value="' + s.number + '">' + s.number + ' (第' + s.page + '页)</option>'
-        ).join('');
-
-    } catch (err) {
-        sectionLoading.style.display = 'none';
-        sectionNone.style.display = 'block';
-        sectionNone.textContent = '章节提取请求失败: ' + err.message;
-    }
-}
-
-// Global function for section list click
-window.selectSection = function(number) {
-    if (!startSectionInput.value) {
-        startSectionInput.value = number;
-    } else {
-        endSectionInput.value = number;
-    }
-};
-
-// Resolve section button
+// Resolve section button (on-demand: sends file + section numbers directly)
 resolveSectionBtn.addEventListener('click', async () => {
-    if (!sectionSessionId || !startSectionInput.value || !endSectionInput.value) {
+    if (!selectedFile || !startSectionInput.value || !endSectionInput.value) {
         resolvedRangeError.style.display = 'block';
         resolvedRangeError.textContent = '请输入起始和结束章节号';
         resolvedRangeDisplay.style.display = 'none';
@@ -144,14 +65,14 @@ resolveSectionBtn.addEventListener('click', async () => {
     resolveSectionBtn.textContent = '解析中...';
 
     try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('start_section', startSectionInput.value.trim());
+        formData.append('end_section', endSectionInput.value.trim());
+
         const response = await fetch('/api/sections/resolve', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                session_id: sectionSessionId,
-                start_section: startSectionInput.value.trim(),
-                end_section: endSectionInput.value.trim()
-            })
+            body: formData
         });
 
         const result = await response.json();
@@ -270,19 +191,12 @@ function resetUpload() {
     isConverting = false;
 
     // Reset section state
-    const oldSessionId = sectionSessionId;
-    sectionSessionId = null;
     resolvedStartPage = null;
     resolvedEndPage = null;
     if (startSectionInput) startSectionInput.value = '';
     if (endSectionInput) endSectionInput.value = '';
     if (resolvedRangeDisplay) resolvedRangeDisplay.style.display = 'none';
     if (resolvedRangeError) resolvedRangeError.style.display = 'none';
-    if (sectionSelection) sectionSelection.style.display = 'none';
-    if (sectionNone) sectionNone.style.display = 'none';
-    if (oldSessionId) {
-        fetch('/api/sections/cleanup/' + oldSessionId, { method: 'DELETE' });
-    }
 
     resetProgress();
 }

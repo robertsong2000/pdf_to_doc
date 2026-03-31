@@ -5,6 +5,7 @@ PDF表格提取模块 - 通过PDF→DOCX→CSV两步转换，利用python-docx�
 优势: DOCX中表格结构是结构化的，提取准确率远高于pdfplumber直接提取
 """
 import csv
+import gc
 import os
 import io
 import tempfile
@@ -107,6 +108,96 @@ def extract_table_grid(table) -> List[List[str]]:
     return grid
 
 
+def _extract_table_grid_from_element(tbl_element) -> List[List[str]]:
+    """
+    从 XML <w:tbl> 元素直接提取表格数据，无需 python-docx Table 对象。
+    支持 extract_table_grid 相同的合并单元格处理逻辑。
+    """
+    tbl_grid = tbl_element.find(f'{W_NS}tblGrid')
+    if tbl_grid is not None:
+        grid_cols = len(tbl_grid.findall(f'{W_NS}gridCol'))
+    else:
+        # 回退：取第一行的 cell 数量
+        first_row = tbl_element.find(f'{W_NS}tr')
+        if first_row is not None:
+            grid_cols = len(first_row.findall(f'{W_NS}tc'))
+        else:
+            grid_cols = 0
+
+    if grid_cols == 0:
+        return []
+
+    rows = tbl_element.findall(f'{W_NS}tr')
+    num_rows = len(rows)
+    grid = [[None] * grid_cols for _ in range(num_rows)]
+
+    for row_idx, row in enumerate(rows):
+        col_pos = 0
+
+        while col_pos < grid_cols and grid[row_idx][col_pos] is not None:
+            col_pos += 1
+
+        tc_elements = row.findall(f'{W_NS}tc')
+
+        for tc_element in tc_elements:
+            while col_pos < grid_cols and grid[row_idx][col_pos] is not None:
+                col_pos += 1
+
+            if col_pos >= grid_cols:
+                break
+
+            tc_pr = tc_element.find(f'{W_NS}tcPr')
+            grid_span = 1
+            v_merge_val = None
+
+            if tc_pr is not None:
+                gs_elem = tc_pr.find(f'{W_NS}gridSpan')
+                if gs_elem is not None:
+                    grid_span = int(gs_elem.get(f'{W_NS}val', 1))
+
+                vm_elem = tc_pr.find(f'{W_NS}vMerge')
+                if vm_elem is not None:
+                    v_merge_val = vm_elem.get(f'{W_NS}val')
+                    if v_merge_val is None:
+                        v_merge_val = 'continue'
+
+            # 提取单元格文本（仅当前单元格，不递归进入嵌套表格）
+            text = _extract_tc_text_no_nested(tc_element)
+
+            if v_merge_val == 'continue':
+                for r in range(row_idx - 1, -1, -1):
+                    if grid[r][col_pos] is not None:
+                        text = grid[r][col_pos]
+                        break
+
+            for c in range(col_pos, min(col_pos + grid_span, grid_cols)):
+                grid[row_idx][c] = text
+
+            col_pos += grid_span
+
+    for row in grid:
+        for i in range(len(row)):
+            if row[i] is None:
+                row[i] = ''
+
+    return grid
+
+
+def _extract_tc_text_no_nested(tc_element) -> str:
+    """从 <w:tc> 元素提取文本，排除嵌套表格中的文本"""
+    texts = []
+    for p in tc_element.findall(f'{W_NS}p'):
+        para_texts = []
+        for r in p.findall(f'{W_NS}r'):
+            for t in r.findall(f'{W_NS}t'):
+                if t.text:
+                    para_texts.append(t.text)
+        texts.append(''.join(para_texts))
+    text = '\n'.join(texts).strip()
+    text = text.replace('\n', ' ').replace('\r', '')
+    return text
+
+
 def _extract_tc_text(tc_element) -> str:
     """从 <w:tc> XML 元素中提取纯文本"""
     texts = []
@@ -128,22 +219,68 @@ class DocxTableExtractor:
     def __init__(self, docx_path: str):
         self.docx_path = docx_path
 
-    def extract_tables(self) -> List[Tuple[int, int, List[List[str]]]]:
+    def extract_tables(self, include_nested: bool = True) -> List[Tuple[int, int, List[List[str]]]]:
         """
-        从DOCX文件中提取所有表格。
+        从DOCX文件中提取所有表格，包括嵌套表格。
+
+        Args:
+            include_nested: 是否提取嵌套在单元格内的子表格
 
         Returns:
             列表，每个元素为元组: (1, 表格索引, 表格数据)
         """
         doc = Document(self.docx_path)
         tables = []
+        table_idx = 0
 
-        for table_idx, table in enumerate(doc.tables):
-            grid = extract_table_grid(table)
+        body = doc.element.body
+        # 使用XML遍历找到所有表格（包括嵌套的）
+        all_tbl_elements = body.findall(f'.//{W_NS}tbl')
+
+        for tbl_element in all_tbl_elements:
+            # 如果不包含嵌套表格，跳过非顶层表格
+            if not include_nested:
+                parent = tbl_element.getparent()
+                is_top_level = True
+                while parent is not None:
+                    if parent.tag == f'{W_NS}tbl':
+                        is_top_level = False
+                        break
+                    parent = parent.getparent()
+                if not is_top_level:
+                    continue
+
+            grid = _extract_table_grid_from_element(tbl_element)
             if grid and any(any(cell for cell in row) for row in grid):
+                # 跳过页眉表格（识别特征：包含Document Name/Document Type/Document No等元数据）
+                if self._is_header_table(grid):
+                    continue
                 tables.append((1, table_idx, grid))
+                table_idx += 1
 
         return tables
+
+    def _is_header_table(self, grid: List[List[str]]) -> bool:
+        """
+        检测是否为页眉表格。
+
+        页眉表格的特征：包含典型的文档元数据关键词，如
+        Document Name, Document Type, Document No, Revision, Page No 等。
+        """
+        if not grid:
+            return False
+
+        header_keywords = [
+            'Document Type', 'Document No', 'Document Name',
+            'Document Release Status', 'Page No', 'Volume No'
+        ]
+
+        # 检查表格中是否包含多个页眉关键词
+        all_text = ' '.join(cell for row in grid for cell in row)
+        match_count = sum(1 for kw in header_keywords if kw in all_text)
+
+        # 如果匹配3个或以上关键词，认为是页眉表格
+        return match_count >= 3
 
     def save_as_single_csv(
         self,
@@ -203,6 +340,8 @@ class PdfTableExtractor:
 
         cv.convert(output_docx_path, start=convert_start, end=convert_end)
         cv.close()
+        del cv
+        gc.collect()
 
     def extract_tables(
         self,
@@ -241,6 +380,8 @@ class PdfTableExtractor:
             # Step 2: DOCX → 表格数据（复用 DocxTableExtractor）
             extractor = DocxTableExtractor(tmp_docx_path)
             tables = extractor.extract_tables()
+            del extractor
+            gc.collect()
 
             if progress_callback:
                 progress_callback(1, 1, len(tables))
