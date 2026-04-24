@@ -393,9 +393,26 @@ async function pollConversionStatus() {
                 convertBtn.innerHTML = '✨ 重新转换';
                 isConverting = false;
             }
+        } else if (response.status === 404) {
+            // Task not found - likely server restarted or task expired
+            updateDetailedStatus({
+                message: '❌ 任务不存在或服务已重启，请重新上传文件转换',
+                progress: 0,
+                step: 'error',
+                status: 'error'
+            });
+            convertBtn.disabled = false;
+            convertBtn.innerHTML = '✨ 重新转换';
+            isConverting = false;
         }
     } catch (error) {
-        updateStatus('获取状态失败', 'error', 0);
+        // Handle network errors or server issues
+        updateDetailedStatus({
+            message: '❌ 无法连接到服务器或服务已重启，请重新开始转换',
+            progress: 0,
+            step: 'error',
+            status: 'error'
+        });
         convertBtn.disabled = false;
         convertBtn.innerHTML = '✨ 重新转换';
         isConverting = false;

@@ -25,13 +25,13 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (using domestic mirror for faster download)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Uninstall and reinstall opencv-python for headless version
 RUN pip uninstall -y opencv-python opencv-contrib-python && \
-    pip install --no-cache-dir opencv-python-headless
+    pip install --no-cache-dir opencv-python-headless -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # Copy project
 COPY . .
@@ -51,4 +51,4 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/ || exit 1
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "300", "--max-requests", "100", "--max-requests-jitter", "10", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "300", "--max-requests", "10000", "--max-requests-jitter", "1000", "app:app"]

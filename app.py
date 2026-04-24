@@ -105,27 +105,43 @@ def monitor_conversion_process(task_id):
             try:
                 with open(status_file, 'r') as f:
                     status = json.load(f)
-                    conversion_status[task_id] = status
-            except:
-                pass
-            
+                    if task_id in conversion_status:
+                        conversion_status[task_id].update(status)
+                    else:
+                        conversion_status[task_id] = status
+            except Exception as e:
+                print(f"[WARNING] Failed to read status file for {task_id}: {e}")
+                # Keep current status in memory
+
             # 等待一段时间再检查
             time.sleep(1)
-        
+
         # 进程已完成，读取最终状态
         try:
             with open(status_file, 'r') as f:
                 final_status = json.load(f)
-                conversion_status[task_id] = final_status
-        except:
+                if task_id in conversion_status:
+                    conversion_status[task_id].update(final_status)
+                else:
+                    conversion_status[task_id] = final_status
+        except Exception as e:
+            print(f"[WARNING] Failed to read final status for {task_id}: {e}")
             # 如果无法读取状态文件，检查进程退出码
             if process.returncode != 0:
-                conversion_status[task_id] = {
-                    'status': 'error',
-                    'message': f'Process exited with code {process.returncode}',
-                    'step': 'error',
-                    'error': f'Process exited with code {process.returncode}'
-                }
+                if task_id in conversion_status:
+                    conversion_status[task_id].update({
+                        'status': 'error',
+                        'message': f'Process exited with code {process.returncode}',
+                        'step': 'error',
+                        'error': f'Process exited with code {process.returncode}'
+                    })
+                else:
+                    conversion_status[task_id] = {
+                        'status': 'error',
+                        'message': f'Process exited with code {process.returncode}',
+                        'step': 'error',
+                        'error': f'Process exited with code {process.returncode}'
+                    }
         
         # 清理资源
         if task_id in conversion_processes:
@@ -491,16 +507,20 @@ def convert_pdf():
         try:
             # Create status file for process communication
             status_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{task_id}_status.json")
-            
+
+            # Initialize status in memory AND file
+            initial_status = {
+                'status': 'converting',
+                'progress': 0,
+                'message': 'Starting conversion...',
+                'step': 'initialization',
+                'error': None
+            }
+            conversion_status[task_id] = initial_status
+
             # Initialize status file
             with open(status_file, 'w') as f:
-                json.dump({
-                    'status': 'converting',
-                    'progress': 0,
-                    'message': 'Starting conversion...',
-                    'step': 'initialization',
-                    'error': None
-                }, f)
+                json.dump(initial_status, f)
             
             # Start conversion worker process
             worker_args = [
@@ -556,23 +576,48 @@ def convert_pdf():
 @app.route('/api/status/<task_id>')
 def get_status(task_id):
     """Get conversion status"""
-    if task_id not in conversion_status:
+    # Check if task exists in memory or in processes
+    if task_id not in conversion_status and task_id not in conversion_processes:
         return jsonify({'error': 'Task not found'}), 404
 
-    # If task is running in a process, try to get the latest status from the status file
+    # If task is in memory, return its status
+    if task_id in conversion_status:
+        status = conversion_status[task_id]
+
+        # If task is still running in a process, try to get the latest status from the status file
+        if task_id in conversion_processes:
+            process_info = conversion_processes[task_id]
+            status_file = process_info['status_file']
+
+            try:
+                with open(status_file, 'r') as f:
+                    file_status = json.load(f)
+                    # Update in-memory status with latest from file
+                    status.update(file_status)
+                    conversion_status[task_id] = status
+            except Exception as e:
+                # If we can't read the file, use the cached status
+                pass
+
+        return jsonify(status)
+
+    # Task exists in processes but not yet in memory (shouldn't happen after fix, but handle it)
     if task_id in conversion_processes:
         process_info = conversion_processes[task_id]
         status_file = process_info['status_file']
-        
+
         try:
             with open(status_file, 'r') as f:
-                file_status = json.load(f)
-                # Update global status with latest from file
-                conversion_status[task_id].update(file_status)
+                return jsonify(json.load(f))
         except:
-            pass  # If we can't read the file, use the cached status
+            # Return a default status if file can't be read
+            return jsonify({
+                'status': 'converting',
+                'message': 'Conversion in progress...',
+                'step': 'processing'
+            })
 
-    return jsonify(conversion_status[task_id])
+    return jsonify({'error': 'Task not found'}), 404
 
 @app.route('/api/download/<task_id>')
 def download_file(task_id):
