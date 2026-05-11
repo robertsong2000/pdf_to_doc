@@ -501,6 +501,7 @@ def convert_pdf():
         # Get page range parameters
         start_page = request.form.get('start_page', type=int)
         end_page = request.form.get('end_page', type=int)
+        remove_headers = request.form.get('remove_headers', 'true').lower() != 'false'
 
         # Start conversion in background process
         print(f"[DEBUG] Starting conversion process for task {task_id}")
@@ -528,13 +529,11 @@ def convert_pdf():
                 task_id,
                 pdf_path,
                 output_path,
-                status_file
+                status_file,
+                str(start_page) if start_page is not None else '',
+                str(end_page) if end_page is not None else '',
+                'true' if remove_headers else 'false'
             ]
-            # Add page range arguments if provided
-            if start_page is not None:
-                worker_args.append(str(start_page))
-            if end_page is not None:
-                worker_args.append(str(end_page))
 
             process = subprocess.Popen(worker_args)
             

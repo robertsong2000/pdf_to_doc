@@ -10,13 +10,14 @@ import json
 import time
 from pdf2docx import Converter
 from pdf2docx.converter import Converter as CVConverter
+from docx_header_cleaner import remove_repeated_pdf_headers
 
 def fix_pdf2docx_compatibility():
     """修复pdf2docx在Docker中的兼容性问题"""
     os.environ['DISPLAY'] = ':99'
     os.environ['PDF2DOCV_SKIP_CHECK'] = '1'
 
-def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page=None, end_page=None):
+def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page=None, end_page=None, remove_headers=True):
     """执行PDF到DOCX的转换"""
     start_time = time.time()
     
@@ -196,6 +197,16 @@ def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page=
             'step': 'finalizing'
         })
 
+        if remove_headers and os.path.exists(output_path):
+            removed_headers = remove_repeated_pdf_headers(output_path)
+            if removed_headers:
+                update_status(status_file, {
+                    'progress': 95,
+                    'message': f'已删除 {removed_headers} 行重复页头...',
+                    'step': 'cleaning_headers',
+                    'removed_headers': removed_headers
+                })
+
         # 检查输出文件是否创建成功
         if os.path.exists(output_path):
             update_status(status_file, {
@@ -261,7 +272,7 @@ def calculate_eta(start_time, current_page, total_pages):
 
 if __name__ == "__main__":
     if len(sys.argv) < 5:
-        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page]")
+        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page] [remove_headers]")
         sys.exit(1)
 
     task_id = sys.argv[1]
@@ -269,7 +280,8 @@ if __name__ == "__main__":
     output_path = sys.argv[3]
     status_file = sys.argv[4]
 
-    start_page = int(sys.argv[5]) if len(sys.argv) > 5 else None
-    end_page = int(sys.argv[6]) if len(sys.argv) > 6 else None
+    start_page = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else None
+    end_page = int(sys.argv[6]) if len(sys.argv) > 6 and sys.argv[6] else None
+    remove_headers = len(sys.argv) <= 7 or sys.argv[7].lower() != 'false'
 
-    convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page, end_page)
+    convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page, end_page, remove_headers)

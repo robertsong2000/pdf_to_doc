@@ -33,6 +33,7 @@ const resolveSectionBtn = document.getElementById('resolveSectionBtn');
 const resolvedRangeDisplay = document.getElementById('resolvedRangeDisplay');
 const resolvedRangeText = document.getElementById('resolvedRangeText');
 const resolvedRangeError = document.getElementById('resolvedRangeError');
+const removeHeadersInput = document.getElementById('removeHeaders');
 
 let resolvedStartPage = null;
 let resolvedEndPage = null;
@@ -206,6 +207,7 @@ function resetUpload() {
     if (endSectionInput) endSectionInput.value = '';
     if (resolvedRangeDisplay) resolvedRangeDisplay.style.display = 'none';
     if (resolvedRangeError) resolvedRangeError.style.display = 'none';
+    if (removeHeadersInput) removeHeadersInput.checked = true;
 
     resetProgress();
 }
@@ -229,6 +231,7 @@ async function convertFile() {
 
     const formData = new FormData();
     formData.append('file', selectedFile);
+    formData.append('remove_headers', removeHeadersInput && removeHeadersInput.checked ? 'true' : 'false');
 
     // Append page range if specified
     if (pageModeRange.checked) {

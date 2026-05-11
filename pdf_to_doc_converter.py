@@ -20,9 +20,10 @@ import argparse
 import glob
 from pathlib import Path
 from pdf2docx import Converter
+from docx_header_cleaner import remove_repeated_pdf_headers
 
 
-def convert_pdf_to_docx(pdf_path, docx_path=None):
+def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True):
     """
     Convert a single PDF file to DOCX format.
 
@@ -57,6 +58,11 @@ def convert_pdf_to_docx(pdf_path, docx_path=None):
         cv.convert(str(docx_path), start=0, end=None)
         cv.close()
 
+        if remove_headers:
+            removed_headers = remove_repeated_pdf_headers(docx_path)
+            if removed_headers:
+                print(f"✓ Removed repeated PDF header rows: {removed_headers}")
+
         print(f"✓ Successfully converted: {docx_path}")
         return str(docx_path)
 
@@ -65,7 +71,7 @@ def convert_pdf_to_docx(pdf_path, docx_path=None):
         return None
 
 
-def batch_convert_pdf_to_docx(pdf_paths, output_dir=None):
+def batch_convert_pdf_to_docx(pdf_paths, output_dir=None, remove_headers=True):
     """
     Convert multiple PDF files to DOCX format.
 
@@ -92,7 +98,7 @@ def batch_convert_pdf_to_docx(pdf_paths, output_dir=None):
             else:
                 docx_path = pdf_path.with_suffix('.docx')
 
-            result = convert_pdf_to_docx(pdf_path, docx_path)
+            result = convert_pdf_to_docx(pdf_path, docx_path, remove_headers=remove_headers)
 
             if result:
                 successful.append(result)
@@ -123,6 +129,7 @@ Examples:
     parser.add_argument('output', nargs='?', help='Output DOCX file (optional)')
     parser.add_argument('--batch', action='store_true', help='Batch convert multiple PDF files')
     parser.add_argument('--output-dir', '-o', help='Output directory for converted files (batch mode)')
+    parser.add_argument('--keep-headers', action='store_true', help='Keep repeated PDF page headers in the output DOCX')
 
     args = parser.parse_args()
 
@@ -147,7 +154,11 @@ Examples:
                 return 1
 
             print(f"Found {len(pdf_files)} PDF files to convert...")
-            successful, failed = batch_convert_pdf_to_docx(pdf_files, args.output_dir)
+            successful, failed = batch_convert_pdf_to_docx(
+                pdf_files,
+                args.output_dir,
+                remove_headers=not args.keep_headers
+            )
 
             print(f"\nConversion Summary:")
             print(f"✓ Successful: {len(successful)}")
@@ -160,7 +171,7 @@ Examples:
 
         else:
             # Handle single file conversion
-            result = convert_pdf_to_docx(args.input, args.output)
+            result = convert_pdf_to_docx(args.input, args.output, remove_headers=not args.keep_headers)
             if not result:
                 return 1
 
