@@ -1,37 +1,59 @@
 FROM python:3.12-slim
 
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ARG PIP_DEFAULT_TIMEOUT=120
+ARG PIP_RETRIES=10
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FLASK_APP=app.py \
     FLASK_ENV=production \
     UPLOAD_FOLDER=/app/uploads \
-    OUTPUT_FOLDER=/app/outputs
+    OUTPUT_FOLDER=/app/outputs \
+    PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
+    PIP_RETRIES=${PIP_RETRIES} \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
 
 # Set work directory
 WORKDIR /app
 
 # Install system dependencies for pdf2docx compatibility (ARM64 compatible)
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libffi-dev \
-    libssl-dev \
     curl \
     libglib2.0-0 \
     libgomp1 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (using domestic mirror for faster download)
+# Install Python dependencies. The index is configurable because mirrors can
+# occasionally timeout during Docker builds.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-# Uninstall and reinstall opencv-python for headless version
-RUN pip uninstall -y opencv-python opencv-contrib-python && \
-    pip install --no-cache-dir opencv-python-headless -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN sed '/^pdf2docx==/d' requirements.txt > /tmp/requirements-no-pdf2docx.txt && \
+    pip install --no-cache-dir \
+        --timeout "${PIP_DEFAULT_TIMEOUT}" \
+        --retries "${PIP_RETRIES}" \
+        --index-url "${PIP_INDEX_URL}" \
+        --trusted-host "${PIP_TRUSTED_HOST}" \
+        -r /tmp/requirements-no-pdf2docx.txt && \
+    pip install --no-cache-dir \
+        --timeout "${PIP_DEFAULT_TIMEOUT}" \
+        --retries "${PIP_RETRIES}" \
+        --index-url "${PIP_INDEX_URL}" \
+        --trusted-host "${PIP_TRUSTED_HOST}" \
+        "PyMuPDF>=1.19.0" \
+        "fonttools>=4.24.0" \
+        "numpy>=1.17.2" \
+        "opencv-python-headless>=4.5" \
+        "fire>=0.3.0" && \
+    pip install --no-cache-dir \
+        --timeout "${PIP_DEFAULT_TIMEOUT}" \
+        --retries "${PIP_RETRIES}" \
+        --index-url "${PIP_INDEX_URL}" \
+        --trusted-host "${PIP_TRUSTED_HOST}" \
+        --no-deps \
+        pdf2docx==0.5.6
 
 # Copy project
 COPY . .
