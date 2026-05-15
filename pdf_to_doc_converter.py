@@ -20,10 +20,10 @@ import argparse
 import glob
 from pathlib import Path
 from pdf2docx import Converter
-from docx_header_cleaner import remove_repeated_pdf_headers
+from docx_header_cleaner import post_process_converted_docx
 
 
-def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True):
+def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True, replace_oem_info=True):
     """
     Convert a single PDF file to DOCX format.
 
@@ -58,10 +58,16 @@ def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True):
         cv.convert(str(docx_path), start=0, end=None)
         cv.close()
 
-        if remove_headers:
-            removed_headers = remove_repeated_pdf_headers(docx_path)
+        if remove_headers or replace_oem_info:
+            removed_headers, replaced_references = post_process_converted_docx(
+                docx_path,
+                remove_headers=remove_headers,
+                replace_oem_info=replace_oem_info,
+            )
             if removed_headers:
                 print(f"✓ Removed repeated PDF header rows: {removed_headers}")
+            if replaced_references:
+                print(f"✓ Replaced OEM references with Renault: {replaced_references}")
 
         print(f"✓ Successfully converted: {docx_path}")
         return str(docx_path)
@@ -71,7 +77,12 @@ def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True):
         return None
 
 
-def batch_convert_pdf_to_docx(pdf_paths, output_dir=None, remove_headers=True):
+def batch_convert_pdf_to_docx(
+    pdf_paths,
+    output_dir=None,
+    remove_headers=True,
+    replace_oem_info=True,
+):
     """
     Convert multiple PDF files to DOCX format.
 
@@ -98,7 +109,12 @@ def batch_convert_pdf_to_docx(pdf_paths, output_dir=None, remove_headers=True):
             else:
                 docx_path = pdf_path.with_suffix('.docx')
 
-            result = convert_pdf_to_docx(pdf_path, docx_path, remove_headers=remove_headers)
+            result = convert_pdf_to_docx(
+                pdf_path,
+                docx_path,
+                remove_headers=remove_headers,
+                replace_oem_info=replace_oem_info,
+            )
 
             if result:
                 successful.append(result)
@@ -130,6 +146,7 @@ Examples:
     parser.add_argument('--batch', action='store_true', help='Batch convert multiple PDF files')
     parser.add_argument('--output-dir', '-o', help='Output directory for converted files (batch mode)')
     parser.add_argument('--keep-headers', action='store_true', help='Keep repeated PDF page headers in the output DOCX')
+    parser.add_argument('--keep-oem-info', action='store_true', help='Keep OEM references in the output DOCX')
 
     args = parser.parse_args()
 
@@ -157,7 +174,8 @@ Examples:
             successful, failed = batch_convert_pdf_to_docx(
                 pdf_files,
                 args.output_dir,
-                remove_headers=not args.keep_headers
+                remove_headers=not args.keep_headers,
+                replace_oem_info=not args.keep_oem_info,
             )
 
             print(f"\nConversion Summary:")
@@ -171,7 +189,12 @@ Examples:
 
         else:
             # Handle single file conversion
-            result = convert_pdf_to_docx(args.input, args.output, remove_headers=not args.keep_headers)
+            result = convert_pdf_to_docx(
+                args.input,
+                args.output,
+                remove_headers=not args.keep_headers,
+                replace_oem_info=not args.keep_oem_info,
+            )
             if not result:
                 return 1
 

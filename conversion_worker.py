@@ -10,14 +10,23 @@ import json
 import time
 from pdf2docx import Converter
 from pdf2docx.converter import Converter as CVConverter
-from docx_header_cleaner import remove_repeated_pdf_headers
+from docx_header_cleaner import post_process_converted_docx
 
 def fix_pdf2docx_compatibility():
     """修复pdf2docx在Docker中的兼容性问题"""
     os.environ['DISPLAY'] = ':99'
     os.environ['PDF2DOCV_SKIP_CHECK'] = '1'
 
-def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page=None, end_page=None, remove_headers=True):
+def convert_pdf_to_docx(
+    task_id,
+    pdf_path,
+    output_path,
+    status_file,
+    start_page=None,
+    end_page=None,
+    remove_headers=True,
+    replace_oem_info=True,
+):
     """执行PDF到DOCX的转换"""
     start_time = time.time()
     
@@ -197,14 +206,19 @@ def convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page=
             'step': 'finalizing'
         })
 
-        if remove_headers and os.path.exists(output_path):
-            removed_headers = remove_repeated_pdf_headers(output_path)
-            if removed_headers:
+        if os.path.exists(output_path) and (remove_headers or replace_oem_info):
+            removed_headers, replaced_references = post_process_converted_docx(
+                output_path,
+                remove_headers=remove_headers,
+                replace_oem_info=replace_oem_info,
+            )
+            if removed_headers or replaced_references:
                 update_status(status_file, {
                     'progress': 95,
-                    'message': f'已删除 {removed_headers} 行重复页头...',
+                    'message': f'已删除 {removed_headers} 行重复页头，替换 {replaced_references} 处 OEM 信息...',
                     'step': 'cleaning_headers',
-                    'removed_headers': removed_headers
+                    'removed_headers': removed_headers,
+                    'replaced_oem_references': replaced_references
                 })
 
         # 检查输出文件是否创建成功
@@ -272,7 +286,7 @@ def calculate_eta(start_time, current_page, total_pages):
 
 if __name__ == "__main__":
     if len(sys.argv) < 5:
-        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page] [remove_headers]")
+        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page] [remove_headers] [replace_oem_info]")
         sys.exit(1)
 
     task_id = sys.argv[1]
@@ -283,5 +297,15 @@ if __name__ == "__main__":
     start_page = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else None
     end_page = int(sys.argv[6]) if len(sys.argv) > 6 and sys.argv[6] else None
     remove_headers = len(sys.argv) <= 7 or sys.argv[7].lower() != 'false'
+    replace_oem_info = len(sys.argv) <= 8 or sys.argv[8].lower() != 'false'
 
-    convert_pdf_to_docx(task_id, pdf_path, output_path, status_file, start_page, end_page, remove_headers)
+    convert_pdf_to_docx(
+        task_id,
+        pdf_path,
+        output_path,
+        status_file,
+        start_page,
+        end_page,
+        remove_headers,
+        replace_oem_info,
+    )

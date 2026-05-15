@@ -502,6 +502,7 @@ def convert_pdf():
         start_page = request.form.get('start_page', type=int)
         end_page = request.form.get('end_page', type=int)
         remove_headers = request.form.get('remove_headers', 'true').lower() != 'false'
+        replace_oem_info = request.form.get('replace_oem_info', 'true').lower() != 'false'
 
         # Start conversion in background process
         print(f"[DEBUG] Starting conversion process for task {task_id}")
@@ -532,7 +533,8 @@ def convert_pdf():
                 status_file,
                 str(start_page) if start_page is not None else '',
                 str(end_page) if end_page is not None else '',
-                'true' if remove_headers else 'false'
+                'true' if remove_headers else 'false',
+                'true' if replace_oem_info else 'false'
             ]
 
             process = subprocess.Popen(worker_args)
