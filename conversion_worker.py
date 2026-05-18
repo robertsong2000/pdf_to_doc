@@ -206,30 +206,45 @@ def convert_pdf_to_docx(
             'step': 'finalizing'
         })
 
+        post_process_warning = None
         if os.path.exists(output_path) and (remove_headers or replace_oem_info):
-            removed_headers, replaced_references = post_process_converted_docx(
-                output_path,
-                remove_headers=remove_headers,
-                replace_oem_info=replace_oem_info,
-            )
-            if removed_headers or replaced_references:
+            try:
+                removed_headers, replaced_references = post_process_converted_docx(
+                    output_path,
+                    remove_headers=remove_headers,
+                    replace_oem_info=replace_oem_info,
+                )
+                if removed_headers or replaced_references:
+                    update_status(status_file, {
+                        'progress': 95,
+                        'message': f'已删除 {removed_headers} 行重复页头，替换 {replaced_references} 处 OEM 信息...',
+                        'step': 'cleaning_headers',
+                        'removed_headers': removed_headers,
+                        'replaced_oem_references': replaced_references
+                    })
+            except Exception as post_process_error:
+                post_process_warning = str(post_process_error)
+                print(f"Post-processing failed but conversion output will be kept: {post_process_warning}")
                 update_status(status_file, {
                     'progress': 95,
-                    'message': f'已删除 {removed_headers} 行重复页头，替换 {replaced_references} 处 OEM 信息...',
-                    'step': 'cleaning_headers',
-                    'removed_headers': removed_headers,
-                    'replaced_oem_references': replaced_references
+                    'message': f'DOCX已生成，后处理失败但文件可下载: {post_process_warning}',
+                    'step': 'post_process_warning',
+                    'warning': post_process_warning
                 })
 
         # 检查输出文件是否创建成功
         if os.path.exists(output_path):
-            update_status(status_file, {
+            completed_status = {
                 'status': 'completed',
                 'progress': 100,
                 'message': 'Conversion completed successfully!',
                 'step': 'completed',
                 'output_file': os.path.basename(output_path)
-            })
+            }
+            if post_process_warning:
+                completed_status['warning'] = post_process_warning
+                completed_status['message'] = 'Conversion completed with post-processing warning.'
+            update_status(status_file, completed_status)
         else:
             raise Exception("Output file was not created")
 
@@ -241,10 +256,8 @@ def convert_pdf_to_docx(
             'error': str(e)
         })
         
-        # 清理文件
+        # Keep the uploaded PDF for troubleshooting/retry. Only remove partial output.
         try:
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
             if os.path.exists(output_path):
                 os.remove(output_path)
         except:

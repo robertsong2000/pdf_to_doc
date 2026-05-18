@@ -35,6 +35,7 @@ SECOND_HEADER_ROW_MARKERS = (
 )
 
 HEADER_ROWS_TO_REMOVE = 2
+WORD_TEXT_TAG = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"
 
 GEELY_REFERENCE_REPLACEMENTS = (
     ("Geely Automotive Research Institute (Ningbo)Co.Ltd", "Renault"),
@@ -54,12 +55,12 @@ def _normalize_text(text: str) -> str:
 
 
 def _row_text(row) -> str:
-    values = []
-    for cell in row.cells:
-        text = _normalize_text(cell.text)
-        if text:
-            values.append(text)
-    return " ".join(values)
+    values = [
+        element.text or ""
+        for element in row._tr.iter()
+        if element.tag == WORD_TEXT_TAG and element.text
+    ]
+    return _normalize_text(" ".join(values))
 
 
 def _has_markers(text: str, markers: Sequence[str]) -> bool:
@@ -135,7 +136,11 @@ def _iter_document_paragraphs(document):
     seen_cells = set()
     for table in document.tables:
         for row in table.rows:
-            for cell in row.cells:
+            try:
+                cells = row.cells
+            except ValueError:
+                continue
+            for cell in cells:
                 cell_id = id(cell._tc)
                 if cell_id in seen_cells:
                     continue

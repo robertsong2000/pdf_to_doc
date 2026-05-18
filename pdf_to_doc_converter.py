@@ -59,15 +59,21 @@ def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True, replace_o
         cv.close()
 
         if remove_headers or replace_oem_info:
-            removed_headers, replaced_references = post_process_converted_docx(
-                docx_path,
-                remove_headers=remove_headers,
-                replace_oem_info=replace_oem_info,
-            )
-            if removed_headers:
-                print(f"✓ Removed repeated PDF header rows: {removed_headers}")
-            if replaced_references:
-                print(f"✓ Replaced OEM references with Renault: {replaced_references}")
+            try:
+                removed_headers, replaced_references = post_process_converted_docx(
+                    docx_path,
+                    remove_headers=remove_headers,
+                    replace_oem_info=replace_oem_info,
+                )
+                if removed_headers:
+                    print(f"✓ Removed repeated PDF header rows: {removed_headers}")
+                if replaced_references:
+                    print(f"✓ Replaced OEM references with Renault: {replaced_references}")
+            except Exception as post_process_error:
+                print(
+                    "⚠ Post-processing failed, but the converted DOCX was kept: "
+                    f"{post_process_error}"
+                )
 
         print(f"✓ Successfully converted: {docx_path}")
         return str(docx_path)

@@ -12,6 +12,7 @@ Requirements:
 import os
 import uuid
 import argparse
+import sys
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 import threading
@@ -117,6 +118,7 @@ def monitor_conversion_process(task_id):
             time.sleep(1)
 
         # 进程已完成，读取最终状态
+        final_status = None
         try:
             with open(status_file, 'r') as f:
                 final_status = json.load(f)
@@ -141,6 +143,77 @@ def monitor_conversion_process(task_id):
                         'message': f'Process exited with code {process.returncode}',
                         'step': 'error',
                         'error': f'Process exited with code {process.returncode}'
+                    }
+
+        if process.returncode != 0:
+            message = f'Conversion process exited with code {process.returncode}'
+            if final_status and final_status.get('error'):
+                message = final_status['error']
+            if task_id in conversion_status:
+                conversion_status[task_id].update({
+                    'status': 'error',
+                    'message': f'Conversion failed: {message}',
+                    'step': 'error',
+                    'error': message
+                })
+            else:
+                conversion_status[task_id] = {
+                    'status': 'error',
+                    'message': f'Conversion failed: {message}',
+                    'step': 'error',
+                    'error': message
+                }
+        elif final_status is None or final_status.get('status') != 'completed':
+            output_path = process_info.get('output_path')
+            if output_path and os.path.exists(output_path):
+                output_file = os.path.basename(output_path)
+                if task_id in conversion_status:
+                    conversion_status[task_id].update({
+                        'status': 'completed',
+                        'progress': 100,
+                        'message': 'Conversion completed successfully!',
+                        'step': 'completed',
+                        'output_file': output_file
+                    })
+                else:
+                    conversion_status[task_id] = {
+                        'status': 'completed',
+                        'progress': 100,
+                        'message': 'Conversion completed successfully!',
+                        'step': 'completed',
+                        'output_file': output_file
+                    }
+            else:
+                if task_id in conversion_status:
+                    conversion_status[task_id].update({
+                        'status': 'error',
+                        'message': 'Conversion process finished but no output file was created',
+                        'step': 'error',
+                        'error': 'Output file was not created'
+                    })
+                else:
+                    conversion_status[task_id] = {
+                        'status': 'error',
+                        'message': 'Conversion process finished but no output file was created',
+                        'step': 'error',
+                        'error': 'Output file was not created'
+                    }
+        else:
+            output_path = process_info.get('output_path')
+            if not output_path or not os.path.exists(output_path):
+                if task_id in conversion_status:
+                    conversion_status[task_id].update({
+                        'status': 'error',
+                        'message': 'Conversion reported success but output file is missing',
+                        'step': 'error',
+                        'error': 'Output file not found on server'
+                    })
+                else:
+                    conversion_status[task_id] = {
+                        'status': 'error',
+                        'message': 'Conversion reported success but output file is missing',
+                        'step': 'error',
+                        'error': 'Output file not found on server'
                     }
         
         # 清理资源
@@ -406,10 +479,8 @@ def convert_pdf_to_docx_task(task_id, pdf_path, output_path):
         if task_id in frontend_heartbeat:
             del frontend_heartbeat[task_id]
 
-        # Clean up files on error
+        # Keep the uploaded PDF for troubleshooting/retry. Only remove partial output.
         try:
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
             if os.path.exists(output_path):
                 os.remove(output_path)
         except:
@@ -526,7 +597,7 @@ def convert_pdf():
             
             # Start conversion worker process
             worker_args = [
-                'python', 'conversion_worker.py',
+                sys.executable, 'conversion_worker.py',
                 task_id,
                 pdf_path,
                 output_path,
