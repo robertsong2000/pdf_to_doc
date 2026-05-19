@@ -617,10 +617,13 @@ def post_process_converted_docx(
     """
     Apply all final DOCX cleanup steps.
 
-    Returns (removed_header_rows, replaced_customer_references).
+    Returns (removed_header_rows, repaired_safety_fields, replaced_customer_references).
     """
     removed_headers = remove_repeated_pdf_headers(docx_path) if remove_headers else 0
+    repaired_safety_fields = 0
     if pdf_path is not None:
-        repair_safety_fields_from_pdf(docx_path, pdf_path, start_page, end_page)
+        repaired_safety_fields = repair_safety_fields_from_pdf(
+            docx_path, pdf_path, start_page, end_page
+        )
     replaced_references = replace_geely_references(docx_path) if replace_oem_info else 0
-    return removed_headers, replaced_references
+    return removed_headers, repaired_safety_fields, replaced_references

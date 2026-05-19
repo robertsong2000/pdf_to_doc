@@ -207,9 +207,13 @@ def convert_pdf_to_docx(
         })
 
         post_process_warning = None
-        if os.path.exists(output_path) and (remove_headers or replace_oem_info):
+        if os.path.exists(output_path):
             try:
-                removed_headers, replaced_references = post_process_converted_docx(
+                (
+                    removed_headers,
+                    repaired_safety_fields,
+                    replaced_references,
+                ) = post_process_converted_docx(
                     output_path,
                     pdf_path=pdf_path,
                     start_page=start_page,
@@ -217,12 +221,17 @@ def convert_pdf_to_docx(
                     remove_headers=remove_headers,
                     replace_oem_info=replace_oem_info,
                 )
-                if removed_headers or replaced_references:
+                if removed_headers or repaired_safety_fields or replaced_references:
                     update_status(status_file, {
                         'progress': 95,
-                        'message': f'已删除 {removed_headers} 行重复页头，替换 {replaced_references} 处 OEM 信息...',
+                        'message': (
+                            f'已删除 {removed_headers} 行重复页头，'
+                            f'修复 {repaired_safety_fields} 处安全字段，'
+                            f'替换 {replaced_references} 处 OEM 信息...'
+                        ),
                         'step': 'cleaning_headers',
                         'removed_headers': removed_headers,
+                        'repaired_safety_fields': repaired_safety_fields,
                         'replaced_oem_references': replaced_references
                     })
             except Exception as post_process_error:
