@@ -62,6 +62,7 @@ def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True, replace_o
             try:
                 removed_headers, replaced_references = post_process_converted_docx(
                     docx_path,
+                    pdf_path=pdf_path,
                     remove_headers=remove_headers,
                     replace_oem_info=replace_oem_info,
                 )

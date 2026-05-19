@@ -14,6 +14,8 @@ import re
 import shutil
 import tempfile
 import zipfile
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -35,7 +37,20 @@ SECOND_HEADER_ROW_MARKERS = (
 )
 
 HEADER_ROWS_TO_REMOVE = 2
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 WORD_TEXT_TAG = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"
+WORD_PARAGRAPH_TAG = f"{{{W_NS}}}p"
+WORD_ROW_TAG = f"{{{W_NS}}}tr"
+WORD_CELL_TAG = f"{{{W_NS}}}tc"
+WORD_RUN_TAG = f"{{{W_NS}}}r"
+WORD_RUN_PROPERTIES_TAG = f"{{{W_NS}}}rPr"
+WORD_TAB_TAG = f"{{{W_NS}}}tab"
+XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
+DOCUMENT_XML_PART_RE = re.compile(r"^word/document\.xml$")
+SAFETY_FIELD_LABELS_TEXT = "Legacy ID: FTTI: ASIL (Decomp):"
+SAFETY_FIELD_RE = re.compile(
+    r"^(Legacy ID|FTTI|ASIL \(Decomp\)|Comment|Safe state|Verification Method):\s*(.*)$"
+)
 
 GEELY_REFERENCE_REPLACEMENTS = (
     ("Geely Automotive Research Institute (Ningbo)Co.Ltd", "Renault"),
@@ -50,8 +65,326 @@ GEELY_REFERENCE_REPLACEMENTS = (
 )
 
 
+@dataclass(frozen=True)
+class SafetyFieldBlock:
+    legacy_id: str
+    ftti: str
+    asil: str
+
+
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _xml_text(element) -> str:
+    values = [
+        text_element.text or ""
+        for text_element in element.iter()
+        if text_element.tag == WORD_TEXT_TAG and text_element.text
+    ]
+    return _normalize_text(" ".join(values))
+
+
+def _set_paragraph_text(paragraph_element, text: str) -> None:
+    for child in list(paragraph_element):
+        if child.tag != f"{{{W_NS}}}pPr":
+            paragraph_element.remove(child)
+
+    run = etree.SubElement(paragraph_element, WORD_RUN_TAG)
+    text_element = etree.SubElement(run, WORD_TEXT_TAG)
+    text_element.set(XML_SPACE, "preserve")
+    text_element.text = text
+
+
+def _paragraph_with_text(reference_paragraph, text: str):
+    paragraph = deepcopy(reference_paragraph)
+    _set_paragraph_text(paragraph, text)
+    return paragraph
+
+
+def _text_runs(paragraph_element) -> list:
+    return [
+        run
+        for run in paragraph_element.findall(WORD_RUN_TAG)
+        if _xml_text(run)
+    ]
+
+
+def _add_text_run(paragraph_element, text: str, template_run=None) -> None:
+    run = etree.SubElement(paragraph_element, WORD_RUN_TAG)
+    if template_run is not None:
+        run_properties = template_run.find(WORD_RUN_PROPERTIES_TAG)
+        if run_properties is not None:
+            run.append(deepcopy(run_properties))
+    text_element = etree.SubElement(run, WORD_TEXT_TAG)
+    text_element.set(XML_SPACE, "preserve")
+    text_element.text = text
+
+
+def _add_tab_run(paragraph_element) -> None:
+    run = etree.SubElement(paragraph_element, WORD_RUN_TAG)
+    etree.SubElement(run, WORD_TAB_TAG)
+
+
+def _field_paragraph_from_template(
+    template_paragraph,
+    label: str,
+    value: str,
+):
+    paragraph = deepcopy(template_paragraph)
+    for child in list(paragraph):
+        if child.tag != f"{{{W_NS}}}pPr":
+            paragraph.remove(child)
+
+    template_runs = _text_runs(template_paragraph)
+    label_run = template_runs[0] if template_runs else None
+    value_run = template_runs[-1] if len(template_runs) > 1 else label_run
+
+    _add_text_run(paragraph, f"{label}: ", label_run)
+    _add_tab_run(paragraph)
+    _add_text_run(paragraph, value, value_run)
+    return paragraph
+
+
+def _find_following_field_template(table_element):
+    if table_element is None:
+        return None
+
+    parent = table_element.getparent()
+    if parent is None:
+        return None
+
+    start_index = parent.index(table_element) + 1
+    for sibling in list(parent)[start_index:]:
+        if sibling.tag != WORD_PARAGRAPH_TAG:
+            continue
+        text = _normalize_text(_xml_text(sibling))
+        if SAFETY_FIELD_RE.match(text):
+            return sibling
+    return None
+
+
+def _find_nearby_field_template(table_element):
+    if table_element is None:
+        return None
+
+    parent = table_element.getparent()
+    if parent is None:
+        return None
+
+    table_index = parent.index(table_element)
+    siblings = list(parent)
+    for sibling in reversed(siblings[:table_index]):
+        if sibling.tag != WORD_PARAGRAPH_TAG:
+            continue
+        text = _normalize_text(_xml_text(sibling))
+        if SAFETY_FIELD_RE.match(text):
+            return sibling
+
+    return _find_following_field_template(table_element)
+
+
+def _insert_paragraphs_after_block(block_element, paragraphs: Sequence) -> None:
+    parent = block_element.getparent()
+    if parent is None:
+        return
+
+    insert_index = parent.index(block_element) + 1
+    for paragraph in paragraphs:
+        parent.insert(insert_index, paragraph)
+        insert_index += 1
+
+
+def _remove_empty_table(table_element) -> None:
+    if any(child.tag == WORD_ROW_TAG for child in table_element):
+        return
+
+    parent = table_element.getparent()
+    if parent is not None:
+        parent.remove(table_element)
+
+
+def _group_words_into_lines(words: list[dict], y_tolerance: float = 3.0) -> list[str]:
+    lines: list[dict] = []
+    for word in sorted(words, key=lambda w: ((w["top"] + w["bottom"]) / 2, w["x0"])):
+        y_center = (word["top"] + word["bottom"]) / 2
+        if lines and abs(lines[-1]["y"] - y_center) <= y_tolerance:
+            lines[-1]["words"].append(word)
+            lines[-1]["y"] = (
+                lines[-1]["y"] * (len(lines[-1]["words"]) - 1) + y_center
+            ) / len(lines[-1]["words"])
+        else:
+            lines.append({"y": y_center, "words": [word]})
+
+    return [
+        _normalize_text(
+            " ".join(
+                word["text"] for word in sorted(line["words"], key=lambda w: w["x0"])
+            )
+        )
+        for line in lines
+    ]
+
+
+def _extract_safety_field_blocks(
+    pdf_path: str | Path,
+    start_page: int | None = None,
+    end_page: int | None = None,
+) -> list[SafetyFieldBlock]:
+    import pdfplumber
+
+    blocks: list[SafetyFieldBlock] = []
+    current: dict[str, str] = {}
+
+    def flush_current() -> None:
+        nonlocal current
+        if current.get("Legacy ID") and current.get("FTTI") and current.get("ASIL (Decomp)"):
+            blocks.append(
+                SafetyFieldBlock(
+                    current["Legacy ID"],
+                    current["FTTI"],
+                    current["ASIL (Decomp)"],
+                )
+            )
+        current = {}
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        start_index = max((start_page or 1) - 1, 0)
+        end_index = min(end_page, len(pdf.pages)) if end_page else len(pdf.pages)
+        for page in pdf.pages[start_index:end_index]:
+            words = page.extract_words(
+                x_tolerance=1,
+                y_tolerance=3,
+                keep_blank_chars=False,
+            )
+            for line in _group_words_into_lines(words):
+                match = SAFETY_FIELD_RE.match(line)
+                if not match:
+                    continue
+                label, value = match.groups()
+                if label == "Legacy ID":
+                    flush_current()
+                if current or label == "Legacy ID":
+                    current[label] = value.strip()
+
+    flush_current()
+    return blocks
+
+
+def _repair_collapsed_safety_cells_in_xml(
+    xml_content: bytes,
+    blocks: Sequence[SafetyFieldBlock],
+) -> tuple[bytes, int]:
+    parser = etree.XMLParser(remove_blank_text=False, recover=True)
+    root = etree.fromstring(xml_content, parser)
+    by_collapsed_values = {
+        _normalize_text(f"{block.legacy_id} {block.ftti} {block.asil}"): block
+        for block in blocks
+    }
+    repaired = 0
+
+    for row in root.iter(WORD_ROW_TAG):
+        cells = [child for child in row if child.tag == WORD_CELL_TAG]
+        if len(cells) < 2:
+            continue
+
+        for index in range(len(cells) - 1):
+            label_cell = cells[index]
+            value_cell = cells[index + 1]
+            value_text = _xml_text(value_cell)
+            block = by_collapsed_values.get(value_text)
+            if block is None:
+                continue
+
+            label_paragraph = None
+            for paragraph in label_cell.iter(WORD_PARAGRAPH_TAG):
+                if _normalize_text(_xml_text(paragraph)) == SAFETY_FIELD_LABELS_TEXT:
+                    label_paragraph = paragraph
+                    break
+            if label_paragraph is None:
+                continue
+
+            row_parent = row.getparent()
+            table_element = row_parent
+            field_template = _find_nearby_field_template(table_element)
+            if field_template is None:
+                field_template = label_paragraph
+
+            replacement_paragraphs = []
+            for paragraph in label_cell.iter(WORD_PARAGRAPH_TAG):
+                paragraph_text = _normalize_text(_xml_text(paragraph))
+                if not paragraph_text or paragraph is label_paragraph:
+                    continue
+                replacement_paragraphs.append(
+                    _paragraph_with_text(paragraph, paragraph_text)
+                )
+
+            replacement_paragraphs.extend(
+                [
+                    _field_paragraph_from_template(
+                        field_template, "Legacy ID", block.legacy_id
+                    ),
+                    _field_paragraph_from_template(field_template, "FTTI", block.ftti),
+                    _field_paragraph_from_template(
+                        field_template, "ASIL (Decomp)", block.asil
+                    ),
+                ]
+            )
+
+            if row_parent is not None:
+                row_parent.remove(row)
+                _insert_paragraphs_after_block(table_element, replacement_paragraphs)
+                _remove_empty_table(table_element)
+            repaired += 1
+
+    if not repaired:
+        return xml_content, 0
+
+    return etree.tostring(
+        root,
+        encoding="UTF-8",
+        xml_declaration=xml_content.lstrip().startswith(b"<?xml"),
+        standalone=False,
+    ), repaired
+
+
+def repair_safety_fields_from_pdf(
+    docx_path: str | Path,
+    pdf_path: str | Path,
+    start_page: int | None = None,
+    end_page: int | None = None,
+) -> int:
+    blocks = _extract_safety_field_blocks(pdf_path, start_page, end_page)
+    if not blocks:
+        return 0
+
+    docx_path = Path(docx_path)
+    repaired = 0
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+
+    try:
+        with zipfile.ZipFile(docx_path, "r") as source, zipfile.ZipFile(
+            tmp_path, "w", zipfile.ZIP_DEFLATED
+        ) as target:
+            for item in source.infolist():
+                content = source.read(item.filename)
+                if DOCUMENT_XML_PART_RE.match(item.filename):
+                    content, part_repaired = _repair_collapsed_safety_cells_in_xml(
+                        content, blocks
+                    )
+                    repaired += part_repaired
+                target.writestr(item, content)
+
+        if repaired:
+            shutil.move(str(tmp_path), str(docx_path))
+        else:
+            tmp_path.unlink(missing_ok=True)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    return repaired
 
 
 def _row_text(row) -> str:
@@ -275,6 +608,9 @@ def replace_geely_references(docx_path: str | Path) -> int:
 
 def post_process_converted_docx(
     docx_path: str | Path,
+    pdf_path: str | Path | None = None,
+    start_page: int | None = None,
+    end_page: int | None = None,
     remove_headers: bool = True,
     replace_oem_info: bool = True,
 ) -> tuple[int, int]:
@@ -284,5 +620,7 @@ def post_process_converted_docx(
     Returns (removed_header_rows, replaced_customer_references).
     """
     removed_headers = remove_repeated_pdf_headers(docx_path) if remove_headers else 0
+    if pdf_path is not None:
+        repair_safety_fields_from_pdf(docx_path, pdf_path, start_page, end_page)
     replaced_references = replace_geely_references(docx_path) if replace_oem_info else 0
     return removed_headers, replaced_references
