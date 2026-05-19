@@ -48,6 +48,7 @@ WORD_TAB_TAG = f"{{{W_NS}}}tab"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 DOCUMENT_XML_PART_RE = re.compile(r"^word/document\.xml$")
 SAFETY_FIELD_LABELS_TEXT = "Legacy ID: FTTI: ASIL (Decomp):"
+SAFETY_FIELD_LABEL_TEXTS = ("Legacy ID:", "FTTI:", "ASIL (Decomp):")
 SAFETY_FIELD_RE = re.compile(
     r"^(Legacy ID|FTTI|ASIL \(Decomp\)|Comment|Safe state|Verification Method):\s*(.*)$"
 )
@@ -144,6 +145,46 @@ def _field_paragraph_from_template(
     _add_tab_run(paragraph)
     _add_text_run(paragraph, value, value_run)
     return paragraph
+
+
+def _find_label_paragraphs(container, expected_labels: Sequence[str]) -> list:
+    matched = []
+    label_index = 0
+    for paragraph in container.iter(WORD_PARAGRAPH_TAG):
+        text = _normalize_text(_xml_text(paragraph))
+        if not text:
+            continue
+
+        expected_text = " ".join(expected_labels[label_index:])
+        if text == expected_text:
+            matched.append(paragraph)
+            return matched
+
+        if text == expected_labels[label_index]:
+            matched.append(paragraph)
+            label_index += 1
+            if label_index == len(expected_labels):
+                return matched
+            continue
+
+        if matched:
+            return []
+
+    return []
+
+
+def _remove_paragraph(paragraph) -> None:
+    parent = paragraph.getparent()
+    if parent is not None:
+        parent.remove(paragraph)
+
+
+def _remove_first_matching_paragraph(container, text: str) -> bool:
+    for paragraph in container.iter(WORD_PARAGRAPH_TAG):
+        if _normalize_text(_xml_text(paragraph)) == text:
+            _remove_paragraph(paragraph)
+            return True
+    return False
 
 
 def _find_following_field_template(table_element):
@@ -281,9 +322,13 @@ def _repair_collapsed_safety_cells_in_xml(
         _normalize_text(f"{block.legacy_id} {block.ftti} {block.asil}"): block
         for block in blocks
     }
+    by_collapsed_legacy_ftti = {
+        _normalize_text(f"{block.legacy_id} {block.ftti}"): block
+        for block in blocks
+    }
     repaired = 0
 
-    for row in root.iter(WORD_ROW_TAG):
+    for row in list(root.iter(WORD_ROW_TAG)):
         cells = [child for child in row if child.tag == WORD_CELL_TAG]
         if len(cells) < 2:
             continue
@@ -296,24 +341,23 @@ def _repair_collapsed_safety_cells_in_xml(
             if block is None:
                 continue
 
-            label_paragraph = None
-            for paragraph in label_cell.iter(WORD_PARAGRAPH_TAG):
-                if _normalize_text(_xml_text(paragraph)) == SAFETY_FIELD_LABELS_TEXT:
-                    label_paragraph = paragraph
-                    break
-            if label_paragraph is None:
+            label_paragraphs = _find_label_paragraphs(
+                label_cell, SAFETY_FIELD_LABEL_TEXTS
+            )
+            if not label_paragraphs:
                 continue
 
             row_parent = row.getparent()
             table_element = row_parent
             field_template = _find_nearby_field_template(table_element)
             if field_template is None:
-                field_template = label_paragraph
+                field_template = label_paragraphs[0]
 
             replacement_paragraphs = []
+            label_paragraph_ids = {id(paragraph) for paragraph in label_paragraphs}
             for paragraph in label_cell.iter(WORD_PARAGRAPH_TAG):
                 paragraph_text = _normalize_text(_xml_text(paragraph))
-                if not paragraph_text or paragraph is label_paragraph:
+                if not paragraph_text or id(paragraph) in label_paragraph_ids:
                     continue
                 replacement_paragraphs.append(
                     _paragraph_with_text(paragraph, paragraph_text)
@@ -336,6 +380,81 @@ def _repair_collapsed_safety_cells_in_xml(
                 _insert_paragraphs_after_block(table_element, replacement_paragraphs)
                 _remove_empty_table(table_element)
             repaired += 1
+
+    for row in list(root.iter(WORD_ROW_TAG)):
+        cells = [child for child in row if child.tag == WORD_CELL_TAG]
+        if len(cells) < 2:
+            continue
+
+        for index in range(len(cells) - 1):
+            label_cell = cells[index]
+            value_cell = cells[index + 1]
+            value_text = _xml_text(value_cell)
+            block = by_collapsed_legacy_ftti.get(value_text)
+            if block is None:
+                continue
+
+            label_paragraphs = _find_label_paragraphs(
+                label_cell, ("Legacy ID:", "FTTI:")
+            )
+            if not label_paragraphs:
+                continue
+
+            asil_text = f"ASIL (Decomp): {block.asil}"
+            following_cells = []
+            seen_current_row = False
+            for candidate_row in root.iter(WORD_ROW_TAG):
+                if candidate_row is row:
+                    seen_current_row = True
+                    continue
+                if not seen_current_row:
+                    continue
+                following_cells.extend(
+                    child for child in candidate_row if child.tag == WORD_CELL_TAG
+                )
+
+            asil_cell = None
+            for candidate_cell in following_cells:
+                if _remove_first_matching_paragraph(candidate_cell, asil_text):
+                    asil_cell = candidate_cell
+                    break
+            if asil_cell is None:
+                continue
+
+            row_parent = row.getparent()
+            table_element = row_parent
+            field_template = _find_nearby_field_template(table_element)
+            if field_template is None:
+                field_template = label_paragraphs[0]
+
+            replacement_paragraphs = []
+            label_paragraph_ids = {id(paragraph) for paragraph in label_paragraphs}
+            for paragraph in label_cell.iter(WORD_PARAGRAPH_TAG):
+                paragraph_text = _normalize_text(_xml_text(paragraph))
+                if not paragraph_text or id(paragraph) in label_paragraph_ids:
+                    continue
+                replacement_paragraphs.append(
+                    _paragraph_with_text(paragraph, paragraph_text)
+                )
+
+            replacement_paragraphs.extend(
+                [
+                    _field_paragraph_from_template(
+                        field_template, "Legacy ID", block.legacy_id
+                    ),
+                    _field_paragraph_from_template(field_template, "FTTI", block.ftti),
+                    _field_paragraph_from_template(
+                        field_template, "ASIL (Decomp)", block.asil
+                    ),
+                ]
+            )
+
+            if row_parent is not None:
+                row_parent.remove(row)
+                _insert_paragraphs_after_block(table_element, replacement_paragraphs)
+                _remove_empty_table(table_element)
+            repaired += 1
+            break
 
     if not repaired:
         return xml_content, 0
