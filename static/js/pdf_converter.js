@@ -159,9 +159,6 @@ convertBtn.addEventListener('click', () => {
 downloadBtn.addEventListener('click', () => {
     if (currentTaskId) {
         window.location.href = `/api/download/${currentTaskId}`;
-        setTimeout(() => {
-            cleanupFiles();
-        }, 1000);
     }
 });
 
