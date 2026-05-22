@@ -118,7 +118,10 @@ class HeaderCleanupTests(unittest.TestCase):
             docx_path = Path(tmp_dir) / "repeated-header-blocks.docx"
             document.save(docx_path)
 
-            removed = remove_repeated_pdf_headers(docx_path)
+            removed = remove_repeated_pdf_headers(
+                docx_path,
+                include_repeated_blocks=True,
+            )
 
             self.assertEqual(removed, 8)
             cleaned = Document(str(docx_path))
@@ -138,6 +141,38 @@ class HeaderCleanupTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(len(cleaned.tables), 0)
+
+    def test_default_header_cleanup_leaves_repeated_blocks_untouched(self):
+        document = Document()
+        document.add_paragraph("Document Name")
+        document.add_paragraph("SWRS-ZCUDM_V01_23R3U3_GEEA3.0")
+        document.add_paragraph("146582 v1 General VMM requirement [CS Released]")
+
+        for text in (
+            "Document Type Document Release Status",
+            "Renault",
+            "Document No",
+            "x04000000 Revision",
+            "001 Volume No Page No",
+            "1887(2573) NOTE-SWRS RELEASED",
+            "(Ningbo)Co.Ltd 184C0769",
+            "Document Name",
+            "SWRS-ZCUDM_V01_23R3U3_GEEA3.0",
+            "Body content after repeated paragraph header",
+        ):
+            document.add_paragraph(text)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            docx_path = Path(tmp_dir) / "default-repeated-header-blocks.docx"
+            document.save(docx_path)
+
+            removed = remove_repeated_pdf_headers(docx_path)
+
+            self.assertEqual(removed, 0)
+            cleaned = Document(str(docx_path))
+            remaining = [p.text for p in cleaned.paragraphs if p.text.strip()]
+            self.assertIn("Document Type Document Release Status", remaining)
+            self.assertIn("Body content after repeated paragraph header", remaining)
 
 
 if __name__ == "__main__":

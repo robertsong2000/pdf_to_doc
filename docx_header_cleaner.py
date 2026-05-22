@@ -778,14 +778,21 @@ def _remove_leading_pdf_header_paragraphs(document) -> int:
     return removed
 
 
-def remove_repeated_pdf_headers(docx_path: str | Path) -> int:
+def remove_repeated_pdf_headers(
+    docx_path: str | Path,
+    include_repeated_blocks: bool = False,
+) -> int:
     """
     Remove repeated PDF page-header rows or leading header paragraphs from a DOCX file.
 
     Returns the number of removed header rows/paragraphs.
     """
     docx_path = Path(docx_path)
-    removed = _remove_repeated_pdf_header_blocks(docx_path)
+    removed = (
+        _remove_repeated_pdf_header_blocks(docx_path)
+        if include_repeated_blocks
+        else 0
+    )
     document = Document(str(docx_path))
 
     removed += _remove_leading_pdf_header_paragraphs(document)
