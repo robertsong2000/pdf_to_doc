@@ -4,6 +4,7 @@ ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
 ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 ARG PIP_DEFAULT_TIMEOUT=120
 ARG PIP_RETRIES=10
+ARG PDF2DOCX_PACKAGE=git+https://github.com/robertsong2000/pdf2docx.git@spec-ignore-page-frame-tables
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -23,6 +24,7 @@ WORKDIR /app
 # Install system dependencies for pdf2docx compatibility (ARM64 compatible)
 RUN apt-get update && apt-get install -y \
     curl \
+    git \
     libglib2.0-0 \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
@@ -53,7 +55,7 @@ RUN sed '/^pdf2docx==/d' requirements.txt > /tmp/requirements-no-pdf2docx.txt &&
         --index-url "${PIP_INDEX_URL}" \
         --trusted-host "${PIP_TRUSTED_HOST}" \
         --no-deps \
-        pdf2docx==0.5.6
+        "${PDF2DOCX_PACKAGE}"
 
 # Copy project
 COPY . .

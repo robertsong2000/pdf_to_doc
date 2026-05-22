@@ -37,6 +37,7 @@ SECOND_HEADER_ROW_MARKERS = (
 )
 
 HEADER_ROWS_TO_REMOVE = 2
+LEADING_HEADER_PARAGRAPH_SCAN_LIMIT = 12
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 WORD_TEXT_TAG = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"
 WORD_PARAGRAPH_TAG = f"{{{W_NS}}}p"
@@ -45,6 +46,9 @@ WORD_CELL_TAG = f"{{{W_NS}}}tc"
 WORD_RUN_TAG = f"{{{W_NS}}}r"
 WORD_RUN_PROPERTIES_TAG = f"{{{W_NS}}}rPr"
 WORD_TAB_TAG = f"{{{W_NS}}}tab"
+WORD_TABLE_CELL_PROPERTIES_TAG = f"{{{W_NS}}}tcPr"
+WORD_GRID_SPAN_TAG = f"{{{W_NS}}}gridSpan"
+WORD_VERTICAL_MERGE_TAG = f"{{{W_NS}}}vMerge"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 DOCUMENT_XML_PART_RE = re.compile(r"^word/document\.xml$")
 SAFETY_FIELD_LABELS_TEXT = "Legacy ID: FTTI: ASIL (Decomp):"
@@ -541,19 +545,141 @@ def _remove_first_rows(table, count: int) -> int:
             break
         parent.remove(row_element)
         removed += 1
+    if removed:
+        _remove_orphan_vertical_merges(table._tbl)
+    return removed
+
+
+def _cell_grid_span(cell_element) -> int:
+    properties = cell_element.find(WORD_TABLE_CELL_PROPERTIES_TAG)
+    if properties is None:
+        return 1
+
+    grid_span = properties.find(WORD_GRID_SPAN_TAG)
+    if grid_span is None:
+        return 1
+
+    try:
+        return max(int(grid_span.get(f"{{{W_NS}}}val", "1")), 1)
+    except ValueError:
+        return 1
+
+
+def _remove_orphan_vertical_merges(table_element) -> None:
+    """
+    Remove vertical-merge continuations whose restart row was deleted.
+
+    Word allows ``w:vMerge`` without a value to mean "continue the merge from
+    the row above". If header cleanup deletes that row, the remaining table can
+    become invalid and readers may hide or truncate later rows.
+    """
+    active_merge_offsets: set[int] = set()
+
+    for row in table_element.findall(WORD_ROW_TAG):
+        grid_offset = 0
+        for cell in row.findall(WORD_CELL_TAG):
+            span = _cell_grid_span(cell)
+            offsets = set(range(grid_offset, grid_offset + span))
+            properties = cell.find(WORD_TABLE_CELL_PROPERTIES_TAG)
+            vertical_merge = (
+                properties.find(WORD_VERTICAL_MERGE_TAG)
+                if properties is not None
+                else None
+            )
+
+            if vertical_merge is None:
+                active_merge_offsets.difference_update(offsets)
+            elif vertical_merge.get(f"{{{W_NS}}}val") == "restart":
+                active_merge_offsets.update(offsets)
+            elif offsets.isdisjoint(active_merge_offsets):
+                properties.remove(vertical_merge)
+                active_merge_offsets.difference_update(offsets)
+
+            grid_offset += span
+
+
+def _paragraph_text(paragraph) -> str:
+    return _normalize_text(paragraph.text or "")
+
+
+def _leading_non_empty_paragraphs(document) -> list[tuple[int, object, str]]:
+    paragraphs = []
+    for index, paragraph in enumerate(document.paragraphs):
+        text = _paragraph_text(paragraph)
+        if not text:
+            continue
+        paragraphs.append((index, paragraph, text))
+        if len(paragraphs) >= LEADING_HEADER_PARAGRAPH_SCAN_LIMIT:
+            break
+    return paragraphs
+
+
+def _leading_pdf_header_paragraph_end(document) -> int | None:
+    leading = _leading_non_empty_paragraphs(document)
+    if len(leading) < 5:
+        return None
+
+    texts = [text for _, _, text in leading]
+    scan_text = " ".join(texts[:8])
+    has_first_row_markers = (
+        "Document Type" in texts[0]
+        and "Document Release Status" in texts[0]
+    )
+    has_institute = any(
+        "Geely Automotive Research Institute" in text
+        for text in texts[:4]
+    )
+    has_second_row_markers = all(
+        marker in scan_text
+        for marker in SECOND_HEADER_ROW_MARKERS
+    )
+    if not (has_first_row_markers and has_institute and has_second_row_markers):
+        return None
+
+    document_name_index = None
+    for index, text in enumerate(texts[:10]):
+        if text == "Document Name" or text.startswith("Document Name "):
+            document_name_index = index
+            break
+
+    if document_name_index is None:
+        return None
+
+    return document_name_index - 1
+
+
+def _remove_leading_pdf_header_paragraphs(document) -> int:
+    end_index = _leading_pdf_header_paragraph_end(document)
+    if end_index is None:
+        return 0
+
+    leading = _leading_non_empty_paragraphs(document)
+    if end_index >= len(leading):
+        return 0
+
+    first_paragraph_index = leading[0][0]
+    last_paragraph_index = leading[end_index][0]
+    removed = 0
+    for paragraph in document.paragraphs[first_paragraph_index:last_paragraph_index + 1]:
+        parent = paragraph._p.getparent()
+        if parent is not None:
+            parent.remove(paragraph._p)
+            removed += 1
+
     return removed
 
 
 def remove_repeated_pdf_headers(docx_path: str | Path) -> int:
     """
-    Remove repeated PDF page-header rows from a DOCX file.
+    Remove repeated PDF page-header rows or leading header paragraphs from a DOCX file.
 
-    Returns the number of rows removed.
+    Returns the number of removed header rows/paragraphs.
     """
     docx_path = Path(docx_path)
     document = Document(str(docx_path))
 
     removed = 0
+    removed += _remove_leading_pdf_header_paragraphs(document)
     for table in list(document.tables):
         if not _starts_with_repeated_pdf_header(table):
             continue

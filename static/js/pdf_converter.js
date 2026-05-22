@@ -232,6 +232,7 @@ async function convertFile() {
     formData.append('file', selectedFile);
     formData.append('remove_headers', removeHeadersInput && removeHeadersInput.checked ? 'true' : 'false');
     formData.append('replace_oem_info', replaceOemInfoInput && replaceOemInfoInput.checked ? 'true' : 'false');
+    formData.append('conversion_mode', 'layout');
 
     // Append page range if specified
     if (pageModeRange.checked) {

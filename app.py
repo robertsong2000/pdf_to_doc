@@ -23,6 +23,7 @@ import json
 import gc
 from pathlib import Path
 from pdf2docx import Converter
+from pdf_conversion_modes import CONVERSION_MODE_OPTIONS
 
 app = Flask(__name__)
 
@@ -574,6 +575,9 @@ def convert_pdf():
         end_page = request.form.get('end_page', type=int)
         remove_headers = request.form.get('remove_headers', 'true').lower() != 'false'
         replace_oem_info = request.form.get('replace_oem_info', 'true').lower() != 'false'
+        conversion_mode = request.form.get('conversion_mode', 'layout')
+        if conversion_mode not in CONVERSION_MODE_OPTIONS:
+            return jsonify({'error': '不支持的转换模式'}), 400
 
         # Start conversion in background process
         print(f"[DEBUG] Starting conversion process for task {task_id}")
@@ -605,7 +609,8 @@ def convert_pdf():
                 str(start_page) if start_page is not None else '',
                 str(end_page) if end_page is not None else '',
                 'true' if remove_headers else 'false',
-                'true' if replace_oem_info else 'false'
+                'true' if replace_oem_info else 'false',
+                conversion_mode,
             ]
 
             process = subprocess.Popen(worker_args)

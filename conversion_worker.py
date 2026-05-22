@@ -8,9 +8,17 @@ import sys
 import os
 import json
 import time
+import tempfile
 from pdf2docx import Converter
 from pdf2docx.converter import Converter as CVConverter
 from docx_header_cleaner import post_process_converted_docx
+from pdf_conversion_modes import CONVERSION_MODE_DEFAULT, get_conversion_options
+from pdf2docx_fallback import (
+    PAGE_FRAME_FALLBACK_OPTION,
+    converter_supports_page_frame_fallback,
+    page_frame_fallback_options,
+    should_retry_page_frame_fallback,
+)
 
 def fix_pdf2docx_compatibility():
     """修复pdf2docx在Docker中的兼容性问题"""
@@ -26,6 +34,7 @@ def convert_pdf_to_docx(
     end_page=None,
     remove_headers=True,
     replace_oem_info=True,
+    conversion_mode=CONVERSION_MODE_DEFAULT,
 ):
     """执行PDF到DOCX的转换"""
     start_time = time.time()
@@ -83,6 +92,7 @@ def convert_pdf_to_docx(
         # Calculate page range for pdf2docx (0-indexed)
         convert_start = (start_page - 1) if start_page else 0
         convert_end = end_page if end_page else None
+        conversion_options = get_conversion_options(conversion_mode)
 
         if start_page or end_page:
             page_info = f" (pages {start_page or 'start'} to {end_page or 'end'})"
@@ -114,11 +124,10 @@ def convert_pdf_to_docx(
             'step': 'processing_content'
         })
 
-        # 执行转换
-        try:
+        def run_pdf2docx_conversion(target_path, options, progress_mode='primary'):
             # 初始化转换器
             cv = Converter(pdf_path)
-            
+
             # 定义进度回调
             def progress_callback(page, total):
                 # 检查是否被取消
@@ -129,11 +138,18 @@ def convert_pdf_to_docx(
                 
                 # 更新进度
                 if total > 0:
-                    page_progress = 50 + int((page / total) * 30)  # Map page progress to 50-80% range
+                    if progress_mode == 'page_frame_fallback':
+                        page_progress = 82 + int((page / total) * 6)
+                        message = f'重新处理页面 {page}/{total} (整页表格 fallback)...'
+                        step = 'page_frame_table_fallback'
+                    else:
+                        page_progress = 50 + int((page / total) * 30)  # Map page progress to 50-80% range
+                        message = f'处理页面 {page}/{total}...'
+                        step = 'processing_pages'
                     update_status(status_file, {
                         'progress': page_progress,
-                        'message': f'处理页面 {page}/{total}...',
-                        'step': 'processing_pages',
+                        'message': message,
+                        'step': step,
                         'current_page': page,
                         'total_pages': total,
                         'eta': calculate_eta(start_time, page, total)
@@ -143,9 +159,20 @@ def convert_pdf_to_docx(
             if hasattr(cv, 'set_progress_callback'):
                 cv.set_progress_callback(progress_callback)
             
-            # 执行转换
-            cv.convert(output_path, start=convert_start, end=convert_end)
-            cv.close()
+            try:
+                # 执行转换
+                cv.convert(
+                    target_path,
+                    start=convert_start,
+                    end=convert_end,
+                    **options,
+                )
+            finally:
+                cv.close()
+
+        # 执行转换
+        try:
+            run_pdf2docx_conversion(output_path, conversion_options)
 
         except AttributeError as ae:
             print(f"pdf2docx attribute error: {str(ae)}")
@@ -186,7 +213,8 @@ def convert_pdf_to_docx(
                     cv.convert(output_path, start=convert_start, end=convert_end,
                               multi_processing=False,
                               debug=False,
-                              keep_layout=True)
+                              keep_layout=True,
+                              **conversion_options)
                     cv.close()
                     
                 except Exception as fallback_error:
@@ -198,6 +226,52 @@ def convert_pdf_to_docx(
         except Exception as e:
             print(f"pdf2docx conversion failed: {str(e)}")
             raise Exception(f"PDF conversion failed: {str(e)}")
+
+        page_frame_fallback_applied = False
+        page_frame_fallback_reason = None
+        should_retry, retry_reason = should_retry_page_frame_fallback(
+            output_path,
+            conversion_mode,
+        )
+        if should_retry:
+            page_frame_fallback_reason = retry_reason
+            print(f"Detected likely whole-page table output: {retry_reason}")
+            if converter_supports_page_frame_fallback(pdf_path):
+                update_status(status_file, {
+                    'progress': 82,
+                    'message': '检测到整页大表格，正在使用规格书 fallback 重新转换...',
+                    'step': 'page_frame_table_fallback',
+                    'page_frame_table_fallback': True,
+                })
+                output_dir = os.path.dirname(os.path.abspath(output_path)) or '.'
+                fd, fallback_output_path = tempfile.mkstemp(
+                    suffix='.docx',
+                    prefix=f'{task_id}_page_frame_fallback_',
+                    dir=output_dir,
+                )
+                os.close(fd)
+                try:
+                    run_pdf2docx_conversion(
+                        fallback_output_path,
+                        page_frame_fallback_options(conversion_options),
+                        progress_mode='page_frame_fallback',
+                    )
+                    os.replace(fallback_output_path, output_path)
+                    page_frame_fallback_applied = True
+                    print("Page-frame table fallback conversion applied.")
+                except Exception as fallback_error:
+                    print(f"Page-frame table fallback failed; keeping first output: {fallback_error}")
+                    try:
+                        if os.path.exists(fallback_output_path):
+                            os.remove(fallback_output_path)
+                    except Exception:
+                        pass
+            else:
+                print(
+                    "Installed pdf2docx does not support "
+                    f"{PAGE_FRAME_FALLBACK_OPTION}; "
+                    "keeping first output."
+                )
 
         # Step 9: Finalizing
         update_status(status_file, {
@@ -256,6 +330,10 @@ def convert_pdf_to_docx(
             if post_process_warning:
                 completed_status['warning'] = post_process_warning
                 completed_status['message'] = 'Conversion completed with post-processing warning.'
+            if page_frame_fallback_reason:
+                completed_status['page_frame_table_detected'] = True
+                completed_status['page_frame_table_reason'] = page_frame_fallback_reason
+                completed_status['page_frame_table_fallback_applied'] = page_frame_fallback_applied
             update_status(status_file, completed_status)
         else:
             raise Exception("Output file was not created")
@@ -311,7 +389,7 @@ def calculate_eta(start_time, current_page, total_pages):
 
 if __name__ == "__main__":
     if len(sys.argv) < 5:
-        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page] [remove_headers] [replace_oem_info]")
+        print("Usage: python conversion_worker.py <task_id> <pdf_path> <output_path> <status_file> [start_page] [end_page] [remove_headers] [replace_oem_info] [conversion_mode]")
         sys.exit(1)
 
     task_id = sys.argv[1]
@@ -323,6 +401,7 @@ if __name__ == "__main__":
     end_page = int(sys.argv[6]) if len(sys.argv) > 6 and sys.argv[6] else None
     remove_headers = len(sys.argv) <= 7 or sys.argv[7].lower() != 'false'
     replace_oem_info = len(sys.argv) <= 8 or sys.argv[8].lower() != 'false'
+    conversion_mode = sys.argv[9] if len(sys.argv) > 9 and sys.argv[9] else CONVERSION_MODE_DEFAULT
 
     convert_pdf_to_docx(
         task_id,
@@ -333,4 +412,5 @@ if __name__ == "__main__":
         end_page,
         remove_headers,
         replace_oem_info,
+        conversion_mode,
     )

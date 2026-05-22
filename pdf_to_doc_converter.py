@@ -18,12 +18,26 @@ import sys
 import os
 import argparse
 import glob
+import tempfile
 from pathlib import Path
 from pdf2docx import Converter
 from docx_header_cleaner import post_process_converted_docx
+from pdf_conversion_modes import CONVERSION_MODE_DEFAULT, get_conversion_options
+from pdf2docx_fallback import (
+    PAGE_FRAME_FALLBACK_OPTION,
+    converter_supports_page_frame_fallback,
+    page_frame_fallback_options,
+    should_retry_page_frame_fallback,
+)
 
 
-def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True, replace_oem_info=True):
+def convert_pdf_to_docx(
+    pdf_path,
+    docx_path=None,
+    remove_headers=True,
+    replace_oem_info=True,
+    conversion_mode=CONVERSION_MODE_DEFAULT,
+):
     """
     Convert a single PDF file to DOCX format.
 
@@ -54,9 +68,51 @@ def convert_pdf_to_docx(pdf_path, docx_path=None, remove_headers=True, replace_o
         print(f"Converting: {pdf_path.name} -> {docx_path.name}")
 
         # Create converter and perform conversion
+        conversion_options = get_conversion_options(conversion_mode)
         cv = Converter(str(pdf_path))
-        cv.convert(str(docx_path), start=0, end=None)
-        cv.close()
+        try:
+            cv.convert(str(docx_path), start=0, end=None, **conversion_options)
+        finally:
+            cv.close()
+
+        should_retry, retry_reason = should_retry_page_frame_fallback(
+            docx_path,
+            conversion_mode,
+        )
+        if should_retry:
+            print(f"Detected likely whole-page table output: {retry_reason}")
+            if converter_supports_page_frame_fallback(pdf_path):
+                fd, fallback_output = tempfile.mkstemp(
+                    suffix='.docx',
+                    prefix=f'{docx_path.stem}_page_frame_fallback_',
+                    dir=docx_path.parent,
+                )
+                os.close(fd)
+                fallback_output_path = Path(fallback_output)
+                try:
+                    fallback_options = page_frame_fallback_options(conversion_options)
+                    cv = Converter(str(pdf_path))
+                    try:
+                        cv.convert(str(fallback_output_path), start=0, end=None, **fallback_options)
+                    finally:
+                        cv.close()
+                    os.replace(fallback_output_path, docx_path)
+                    print(f"✓ Applied {PAGE_FRAME_FALLBACK_OPTION} retry")
+                except Exception as fallback_error:
+                    try:
+                        if fallback_output_path.exists():
+                            fallback_output_path.unlink()
+                    except Exception:
+                        pass
+                    print(
+                        "⚠ Page-frame table fallback failed; kept first output: "
+                        f"{fallback_error}"
+                    )
+            else:
+                print(
+                    "⚠ Detected whole-page table output, but installed pdf2docx "
+                    f"does not support {PAGE_FRAME_FALLBACK_OPTION}; kept first output."
+                )
 
         try:
             (
@@ -94,6 +150,7 @@ def batch_convert_pdf_to_docx(
     output_dir=None,
     remove_headers=True,
     replace_oem_info=True,
+    conversion_mode=CONVERSION_MODE_DEFAULT,
 ):
     """
     Convert multiple PDF files to DOCX format.
@@ -126,6 +183,7 @@ def batch_convert_pdf_to_docx(
                 docx_path,
                 remove_headers=remove_headers,
                 replace_oem_info=replace_oem_info,
+                conversion_mode=conversion_mode,
             )
 
             if result:
@@ -159,6 +217,15 @@ Examples:
     parser.add_argument('--output-dir', '-o', help='Output directory for converted files (batch mode)')
     parser.add_argument('--keep-headers', action='store_true', help='Keep repeated PDF page headers in the output DOCX')
     parser.add_argument('--keep-oem-info', action='store_true', help='Keep OEM references in the output DOCX')
+    parser.add_argument(
+        '--conversion-mode',
+        choices=('layout', 'text', 'no_lattice'),
+        default=CONVERSION_MODE_DEFAULT,
+        help=(
+            'Conversion mode: layout preserves default pdf2docx behavior; '
+            'text disables table detection; no_lattice disables line-frame table detection'
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -188,6 +255,7 @@ Examples:
                 args.output_dir,
                 remove_headers=not args.keep_headers,
                 replace_oem_info=not args.keep_oem_info,
+                conversion_mode=args.conversion_mode,
             )
 
             print(f"\nConversion Summary:")
@@ -206,6 +274,7 @@ Examples:
                 args.output,
                 remove_headers=not args.keep_headers,
                 replace_oem_info=not args.keep_oem_info,
+                conversion_mode=args.conversion_mode,
             )
             if not result:
                 return 1
