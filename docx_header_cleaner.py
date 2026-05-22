@@ -51,6 +51,7 @@ WORD_GRID_SPAN_TAG = f"{{{W_NS}}}gridSpan"
 WORD_VERTICAL_MERGE_TAG = f"{{{W_NS}}}vMerge"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 DOCUMENT_XML_PART_RE = re.compile(r"^word/document\.xml$")
+DOCUMENT_XML = "word/document.xml"
 SAFETY_FIELD_LABELS_TEXT = "Legacy ID: FTTI: ASIL (Decomp):"
 SAFETY_FIELD_LABEL_TEXTS = ("Legacy ID:", "FTTI:", "ASIL (Decomp):")
 SAFETY_FIELD_RE = re.compile(
@@ -247,6 +248,114 @@ def _remove_empty_table(table_element) -> None:
     parent = table_element.getparent()
     if parent is not None:
         parent.remove(table_element)
+
+
+def _is_document_name_text(text: str) -> bool:
+    return text == "Document Name" or text.startswith("Document Name ")
+
+
+def _is_pdf_header_paragraph_start(text: str) -> bool:
+    return "Document Type" in text and "Document Release Status" in text
+
+
+def _is_pdf_header_table_element(table_element) -> bool:
+    text = _xml_text(table_element)
+    if not text:
+        return False
+
+    return (
+        "Document Type" in text
+        and "Document Release Status" in text
+        and "Document No" in text
+        and "Revision" in text
+        and "Page No" in text
+        and ("NOTE-SWRS" in text or "RELEASED" in text)
+    )
+
+
+def _next_non_empty_block_text(blocks: Sequence, start_index: int) -> str:
+    for block in blocks[start_index:]:
+        text = _xml_text(block)
+        if text:
+            return text
+    return ""
+
+
+def _remove_repeated_pdf_header_blocks_in_xml(xml_content: bytes) -> tuple[bytes, int]:
+    parser = etree.XMLParser(remove_blank_text=False, recover=True)
+    root = etree.fromstring(xml_content, parser)
+    body = root.find(f"{{{W_NS}}}body")
+    if body is None:
+        return xml_content, 0
+
+    removed = 0
+    index = 0
+    while index < len(body):
+        block = body[index]
+        text = _xml_text(block)
+
+        if block.tag == WORD_PARAGRAPH_TAG and _is_pdf_header_paragraph_start(text):
+            end_index = index + 1
+            while end_index < len(body):
+                candidate_text = _xml_text(body[end_index])
+                if _is_document_name_text(candidate_text):
+                    break
+                end_index += 1
+
+            if end_index < len(body):
+                for removable in list(body)[index:end_index]:
+                    body.remove(removable)
+                    removed += 1
+                continue
+
+        if block.tag == f"{{{W_NS}}}tbl" and _is_pdf_header_table_element(block):
+            next_text = _next_non_empty_block_text(list(body), index + 1)
+            if _is_document_name_text(next_text):
+                body.remove(block)
+                removed += 1
+                continue
+
+        index += 1
+
+    if not removed:
+        return xml_content, 0
+
+    return etree.tostring(
+        root,
+        encoding="UTF-8",
+        xml_declaration=xml_content.lstrip().startswith(b"<?xml"),
+        standalone=False,
+    ), removed
+
+
+def _remove_repeated_pdf_header_blocks(docx_path: Path) -> int:
+    removed = 0
+    with tempfile.NamedTemporaryFile(
+        suffix=".docx",
+        delete=False,
+        dir=docx_path.parent,
+    ) as tmp:
+        tmp_path = Path(tmp.name)
+
+    try:
+        with zipfile.ZipFile(docx_path, "r") as source, zipfile.ZipFile(
+            tmp_path, "w", zipfile.ZIP_DEFLATED
+        ) as target:
+            for item in source.infolist():
+                content = source.read(item.filename)
+                if item.filename == DOCUMENT_XML:
+                    content, removed = _remove_repeated_pdf_header_blocks_in_xml(content)
+                target.writestr(item, content)
+
+        if removed:
+            shutil.move(str(tmp_path), str(docx_path))
+        else:
+            tmp_path.unlink(missing_ok=True)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    return removed
 
 
 def _group_words_into_lines(words: list[dict], y_tolerance: float = 3.0) -> list[str]:
@@ -676,9 +785,9 @@ def remove_repeated_pdf_headers(docx_path: str | Path) -> int:
     Returns the number of removed header rows/paragraphs.
     """
     docx_path = Path(docx_path)
+    removed = _remove_repeated_pdf_header_blocks(docx_path)
     document = Document(str(docx_path))
 
-    removed = 0
     removed += _remove_leading_pdf_header_paragraphs(document)
     for table in list(document.tables):
         if not _starts_with_repeated_pdf_header(table):

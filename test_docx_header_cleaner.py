@@ -81,6 +81,64 @@ class HeaderCleanupTests(unittest.TestCase):
                 "146582 v1 General VMM requirement [CS Released]",
             )
 
+    def test_header_cleanup_removes_repeated_header_blocks(self):
+        document = Document()
+        document.add_paragraph("Document Name")
+        document.add_paragraph("SWRS-ZCUDM_V01_23R3U3_GEEA3.0")
+        document.add_paragraph("146582 v1 General VMM requirement [CS Released]")
+
+        for text in (
+            "Document Type Document Release Status",
+            "Renault",
+            "Document No",
+            "x04000000 Revision",
+            "001 Volume No Page No",
+            "1887(2573) NOTE-SWRS RELEASED",
+            "(Ningbo)Co.Ltd 184C0769",
+            "Document Name",
+            "SWRS-ZCUDM_V01_23R3U3_GEEA3.0",
+            "Body content after repeated paragraph header",
+        ):
+            document.add_paragraph(text)
+
+        table = document.add_table(rows=4, cols=2)
+        table.cell(0, 0).text = "Document Type"
+        table.cell(0, 1).text = "Document Release Status"
+        table.cell(1, 0).text = "NOTE-SWRS"
+        table.cell(1, 1).text = "RELEASED"
+        table.cell(2, 0).text = "Document No Revision"
+        table.cell(2, 1).text = "Page No"
+        table.cell(3, 0).text = "x04000000"
+        table.cell(3, 1).text = "1888(2573)"
+        document.add_paragraph("Document Name")
+        document.add_paragraph("SWRS-ZCUDM_V01_23R3U3_GEEA3.0")
+        document.add_paragraph("Body content after repeated table header")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            docx_path = Path(tmp_dir) / "repeated-header-blocks.docx"
+            document.save(docx_path)
+
+            removed = remove_repeated_pdf_headers(docx_path)
+
+            self.assertEqual(removed, 8)
+            cleaned = Document(str(docx_path))
+            remaining = [p.text for p in cleaned.paragraphs if p.text.strip()]
+            self.assertEqual(
+                remaining,
+                [
+                    "Document Name",
+                    "SWRS-ZCUDM_V01_23R3U3_GEEA3.0",
+                    "146582 v1 General VMM requirement [CS Released]",
+                    "Document Name",
+                    "SWRS-ZCUDM_V01_23R3U3_GEEA3.0",
+                    "Body content after repeated paragraph header",
+                    "Document Name",
+                    "SWRS-ZCUDM_V01_23R3U3_GEEA3.0",
+                    "Body content after repeated table header",
+                ],
+            )
+            self.assertEqual(len(cleaned.tables), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
