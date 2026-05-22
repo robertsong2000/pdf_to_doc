@@ -7,11 +7,7 @@ from pathlib import Path
 from docx import Document
 from docx.enum.section import WD_SECTION
 
-from pdf2docx_fallback import (
-    detect_page_frame_table_pages,
-    repair_page_frame_inner_tables,
-    replace_docx_pages,
-)
+from pdf2docx_fallback import detect_page_frame_table_pages, replace_docx_pages
 
 
 def _add_large_table(document, prefix: str) -> None:
@@ -67,47 +63,6 @@ class PageFrameFallbackTests(unittest.TestCase):
             self.assertIn("page two replacement", text)
             self.assertIn("page three stays", text)
             self.assertNotIn("bad page cell", text)
-
-    def test_repairs_eeprom_table_from_pdf_page(self):
-        test_pdf = Path("test.pdf")
-        if not test_pdf.exists():
-            self.skipTest("test.pdf fixture is not available")
-
-        document = Document()
-        document.add_paragraph("146582 v1 General VMM requirement [CS Released]")
-        table = document.add_table(rows=1, cols=7)
-        headers = [
-            "EEPROM Parameter",
-            "Read/Write",
-            "Range",
-            "Resolution",
-            "Unit",
-            "Default Value",
-            "Description",
-        ]
-        for index, header in enumerate(headers):
-            table.cell(0, index).text = header
-        document.add_paragraph("Document Name")
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            docx_path = Path(tmp_dir) / "fallback.docx"
-            document.save(docx_path)
-
-            repaired = repair_page_frame_inner_tables(docx_path, test_pdf, 0)
-
-            self.assertEqual(repaired, 1)
-            repaired_doc = Document(str(docx_path))
-            text = "\n".join(
-                cell.text
-                for table in repaired_doc.tables
-                for row in table.rows
-                for cell in row.cells
-            )
-            self.assertIn("EEPROM Parameter", text)
-            self.assertIn("WiprFrntSrvPosngRe", text)
-            self.assertIn("WiprReSrvPosngReq", text)
-            self.assertEqual(len(repaired_doc.tables[0].rows), 3)
-            self.assertEqual(len(repaired_doc.tables[0].columns), 7)
 
 
 if __name__ == "__main__":

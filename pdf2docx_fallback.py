@@ -17,8 +17,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import fitz
-from docx import Document
 from lxml import etree
 from pdf2docx import Converter
 
@@ -174,116 +172,6 @@ def should_retry_page_frame_fallback(
     """
     pages, reason = detect_page_frame_table_pages(docx_path, conversion_mode)
     return bool(pages), reason
-
-
-def _clean_table_cell(value: Any) -> str:
-    if value is None:
-        return ""
-    lines = [" ".join(line.split()) for line in str(value).splitlines()]
-    return "\n".join(line for line in lines if line).strip()
-
-
-def _extract_eeprom_tables_from_pdf_page(pdf_path: str | Path, page_index: int) -> list[list[list[str]]]:
-    """Extract EEPROM-like inner tables from a PDF page using PyMuPDF table detection."""
-    extracted_tables: list[list[list[str]]] = []
-    pdf = fitz.open(str(pdf_path))
-    try:
-        if page_index < 0 or page_index >= pdf.page_count:
-            return []
-
-        table_finder = pdf[page_index].find_tables()
-        for table in table_finder.tables:
-            rows = table.extract()
-            for row_index, row in enumerate(rows):
-                normalized = [_clean_table_cell(cell) for cell in row]
-                non_empty = [cell for cell in normalized if cell]
-                header_text = " ".join(non_empty)
-                is_eeprom_header = (
-                    5 <= len(non_empty) <= 10
-                    and non_empty[0] == "EEPROM Parameter"
-                    and "Read/Write" in header_text
-                    and "Default Value" in header_text
-                    and "Description" in header_text
-                )
-                if not is_eeprom_header:
-                    continue
-
-                candidate = [non_empty]
-                for next_row in rows[row_index + 1:]:
-                    next_cells = [
-                        _clean_table_cell(cell)
-                        for cell in next_row
-                        if _clean_table_cell(cell)
-                    ]
-                    if not next_cells:
-                        break
-                    next_text = " ".join(next_cells)
-                    if "Purpose:" in next_text or "[CS Released]" in next_text:
-                        break
-                    if len(next_cells) < 3:
-                        break
-                    candidate.append(next_cells)
-
-                if len(candidate) >= 2:
-                    extracted_tables.append(candidate)
-    finally:
-        pdf.close()
-
-    return extracted_tables
-
-
-def _replace_docx_table(document, old_table, rows: list[list[str]]) -> None:
-    column_count = max(len(row) for row in rows)
-    new_table = document.add_table(rows=len(rows), cols=column_count)
-    new_table.style = "Table Grid"
-
-    for row_index, row in enumerate(rows):
-        for col_index in range(column_count):
-            value = row[col_index] if col_index < len(row) else ""
-            new_table.cell(row_index, col_index).text = value
-
-    old_tbl = old_table._tbl
-    new_tbl = new_table._tbl
-    old_tbl.addprevious(new_tbl)
-    old_tbl.getparent().remove(old_tbl)
-
-
-def repair_page_frame_inner_tables(
-    docx_path: str | Path,
-    pdf_path: str | Path,
-    pdf_page_index: int,
-) -> int:
-    """Repair known inner tables damaged by page-frame fallback conversion."""
-    replacement_tables = _extract_eeprom_tables_from_pdf_page(pdf_path, pdf_page_index)
-    if not replacement_tables:
-        return 0
-
-    document = Document(str(docx_path))
-    repaired = 0
-    used_table_indexes: set[int] = set()
-    for replacement_rows in replacement_tables:
-        for table_index, table in enumerate(document.tables):
-            if table_index in used_table_indexes:
-                continue
-
-            table_text = "\n".join(
-                cell.text
-                for row in table.rows
-                for cell in row.cells
-                if cell.text.strip()
-            )
-            if "EEPROM Parameter" not in table_text or "Description" not in table_text:
-                continue
-
-            _replace_docx_table(document, table, replacement_rows)
-            used_table_indexes.add(table_index)
-            repaired += 1
-            break
-
-    if repaired:
-        document.save(str(docx_path))
-
-    return repaired
 
 
 def replace_docx_pages(

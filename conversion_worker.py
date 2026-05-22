@@ -18,7 +18,6 @@ from pdf2docx_fallback import (
     converter_supports_page_frame_fallback,
     detect_page_frame_table_pages,
     page_frame_fallback_options,
-    repair_page_frame_inner_tables,
     replace_docx_pages,
 )
 
@@ -256,7 +255,6 @@ def convert_pdf_to_docx(
                 fallback_output_paths = {}
                 try:
                     fallback_options = page_frame_fallback_options(conversion_options)
-                    repaired_inner_tables = 0
                     for page_index in page_frame_fallback_pages:
                         pdf_page_start = convert_start + page_index
                         pdf_page_end = pdf_page_start + 1
@@ -274,18 +272,12 @@ def convert_pdf_to_docx(
                             page_start=pdf_page_start,
                             page_end=pdf_page_end,
                         )
-                        repaired_inner_tables += repair_page_frame_inner_tables(
-                            fallback_output_path,
-                            pdf_path,
-                            pdf_page_start,
-                        )
 
                     replace_docx_pages(output_path, fallback_output_paths)
                     page_frame_fallback_applied = True
                     print(
                         "Page-frame table fallback conversion applied to pages: "
-                        f"{[page + 1 for page in page_frame_fallback_pages]} "
-                        f"(repaired inner tables: {repaired_inner_tables})"
+                        f"{[page + 1 for page in page_frame_fallback_pages]}"
                     )
                 except Exception as fallback_error:
                     print(f"Page-frame table fallback failed; keeping first output: {fallback_error}")
