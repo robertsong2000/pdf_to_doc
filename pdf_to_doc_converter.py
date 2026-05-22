@@ -26,8 +26,9 @@ from pdf_conversion_modes import CONVERSION_MODE_DEFAULT, get_conversion_options
 from pdf2docx_fallback import (
     PAGE_FRAME_FALLBACK_OPTION,
     converter_supports_page_frame_fallback,
+    detect_page_frame_table_pages,
     page_frame_fallback_options,
-    should_retry_page_frame_fallback,
+    replace_docx_pages,
 )
 
 
@@ -75,39 +76,53 @@ def convert_pdf_to_docx(
         finally:
             cv.close()
 
-        should_retry, retry_reason = should_retry_page_frame_fallback(
+        page_frame_fallback_pages, retry_reason = detect_page_frame_table_pages(
             docx_path,
             conversion_mode,
         )
-        if should_retry:
+        if page_frame_fallback_pages:
             print(f"Detected likely whole-page table output: {retry_reason}")
             if converter_supports_page_frame_fallback(pdf_path):
-                fd, fallback_output = tempfile.mkstemp(
-                    suffix='.docx',
-                    prefix=f'{docx_path.stem}_page_frame_fallback_',
-                    dir=docx_path.parent,
-                )
-                os.close(fd)
-                fallback_output_path = Path(fallback_output)
+                fallback_output_paths = {}
                 try:
                     fallback_options = page_frame_fallback_options(conversion_options)
-                    cv = Converter(str(pdf_path))
-                    try:
-                        cv.convert(str(fallback_output_path), start=0, end=None, **fallback_options)
-                    finally:
-                        cv.close()
-                    os.replace(fallback_output_path, docx_path)
-                    print(f"✓ Applied {PAGE_FRAME_FALLBACK_OPTION} retry")
+                    for page_index in page_frame_fallback_pages:
+                        fd, fallback_output = tempfile.mkstemp(
+                            suffix='.docx',
+                            prefix=f'{docx_path.stem}_page_frame_fallback_p{page_index + 1}_',
+                            dir=docx_path.parent,
+                        )
+                        os.close(fd)
+                        fallback_output_path = Path(fallback_output)
+                        fallback_output_paths[page_index] = fallback_output_path
+                        cv = Converter(str(pdf_path))
+                        try:
+                            cv.convert(
+                                str(fallback_output_path),
+                                start=page_index,
+                                end=page_index + 1,
+                                **fallback_options,
+                            )
+                        finally:
+                            cv.close()
+
+                    replace_docx_pages(docx_path, fallback_output_paths)
+                    print(
+                        f"✓ Applied {PAGE_FRAME_FALLBACK_OPTION} retry to pages: "
+                        f"{[page + 1 for page in page_frame_fallback_pages]}"
+                    )
                 except Exception as fallback_error:
-                    try:
-                        if fallback_output_path.exists():
-                            fallback_output_path.unlink()
-                    except Exception:
-                        pass
                     print(
                         "⚠ Page-frame table fallback failed; kept first output: "
                         f"{fallback_error}"
                     )
+                finally:
+                    try:
+                        for fallback_output_path in fallback_output_paths.values():
+                            if fallback_output_path.exists():
+                                fallback_output_path.unlink()
+                    except Exception:
+                        pass
             else:
                 print(
                     "⚠ Detected whole-page table output, but installed pdf2docx "

@@ -16,8 +16,9 @@ from pdf_conversion_modes import CONVERSION_MODE_DEFAULT, get_conversion_options
 from pdf2docx_fallback import (
     PAGE_FRAME_FALLBACK_OPTION,
     converter_supports_page_frame_fallback,
+    detect_page_frame_table_pages,
     page_frame_fallback_options,
-    should_retry_page_frame_fallback,
+    replace_docx_pages,
 )
 
 def fix_pdf2docx_compatibility():
@@ -124,7 +125,13 @@ def convert_pdf_to_docx(
             'step': 'processing_content'
         })
 
-        def run_pdf2docx_conversion(target_path, options, progress_mode='primary'):
+        def run_pdf2docx_conversion(
+            target_path,
+            options,
+            progress_mode='primary',
+            page_start=convert_start,
+            page_end=convert_end,
+        ):
             # 初始化转换器
             cv = Converter(pdf_path)
 
@@ -163,8 +170,8 @@ def convert_pdf_to_docx(
                 # 执行转换
                 cv.convert(
                     target_path,
-                    start=convert_start,
-                    end=convert_end,
+                    start=page_start,
+                    end=page_end,
                     **options,
                 )
             finally:
@@ -229,41 +236,56 @@ def convert_pdf_to_docx(
 
         page_frame_fallback_applied = False
         page_frame_fallback_reason = None
-        should_retry, retry_reason = should_retry_page_frame_fallback(
+        page_frame_fallback_pages, retry_reason = detect_page_frame_table_pages(
             output_path,
             conversion_mode,
         )
-        if should_retry:
+        if page_frame_fallback_pages:
             page_frame_fallback_reason = retry_reason
             print(f"Detected likely whole-page table output: {retry_reason}")
             if converter_supports_page_frame_fallback(pdf_path):
                 update_status(status_file, {
                     'progress': 82,
-                    'message': '检测到整页大表格，正在使用规格书 fallback 重新转换...',
+                    'message': '检测到整页大表格，正在按页使用规格书 fallback 重新转换...',
                     'step': 'page_frame_table_fallback',
                     'page_frame_table_fallback': True,
+                    'page_frame_table_pages': [page + 1 for page in page_frame_fallback_pages],
                 })
                 output_dir = os.path.dirname(os.path.abspath(output_path)) or '.'
-                fd, fallback_output_path = tempfile.mkstemp(
-                    suffix='.docx',
-                    prefix=f'{task_id}_page_frame_fallback_',
-                    dir=output_dir,
-                )
-                os.close(fd)
+                fallback_output_paths = {}
                 try:
-                    run_pdf2docx_conversion(
-                        fallback_output_path,
-                        page_frame_fallback_options(conversion_options),
-                        progress_mode='page_frame_fallback',
-                    )
-                    os.replace(fallback_output_path, output_path)
+                    fallback_options = page_frame_fallback_options(conversion_options)
+                    for page_index in page_frame_fallback_pages:
+                        pdf_page_start = convert_start + page_index
+                        pdf_page_end = pdf_page_start + 1
+                        fd, fallback_output_path = tempfile.mkstemp(
+                            suffix='.docx',
+                            prefix=f'{task_id}_page_frame_fallback_p{page_index + 1}_',
+                            dir=output_dir,
+                        )
+                        os.close(fd)
+                        fallback_output_paths[page_index] = fallback_output_path
+                        run_pdf2docx_conversion(
+                            fallback_output_path,
+                            fallback_options,
+                            progress_mode='page_frame_fallback',
+                            page_start=pdf_page_start,
+                            page_end=pdf_page_end,
+                        )
+
+                    replace_docx_pages(output_path, fallback_output_paths)
                     page_frame_fallback_applied = True
-                    print("Page-frame table fallback conversion applied.")
+                    print(
+                        "Page-frame table fallback conversion applied to pages: "
+                        f"{[page + 1 for page in page_frame_fallback_pages]}"
+                    )
                 except Exception as fallback_error:
                     print(f"Page-frame table fallback failed; keeping first output: {fallback_error}")
+                finally:
                     try:
-                        if os.path.exists(fallback_output_path):
-                            os.remove(fallback_output_path)
+                        for fallback_output_path in fallback_output_paths.values():
+                            if os.path.exists(fallback_output_path):
+                                os.remove(fallback_output_path)
                     except Exception:
                         pass
             else:
