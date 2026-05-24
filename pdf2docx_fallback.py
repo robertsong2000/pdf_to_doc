@@ -68,6 +68,25 @@ def _element_text_len(element) -> int:
     return len("".join(text.strip() for text in element.itertext() if text.strip()))
 
 
+def _has_section_properties(element) -> bool:
+    return element.find(".//w:sectPr", NS) is not None or element.tag == f"{{{W_NS}}}sectPr"
+
+
+def _with_target_segment_boundary(replacement_elements: list[Any], target_elements: list[Any]) -> list[Any]:
+    """Use replacement content while preserving the target segment's page boundary."""
+    if not replacement_elements or not target_elements:
+        return replacement_elements
+
+    if not _has_section_properties(replacement_elements[-1]):
+        return replacement_elements
+    if not _has_section_properties(target_elements[-1]):
+        return replacement_elements
+
+    merged = list(replacement_elements)
+    merged[-1] = deepcopy(target_elements[-1])
+    return merged
+
+
 def _segment_page_frame_reason(elements: list[Any]) -> str | None:
     tables = [element for element in elements if element.tag == f"{{{W_NS}}}tbl"]
     if not tables:
@@ -211,10 +230,15 @@ def replace_docx_pages(
         if not replacement_segments:
             raise ValueError(f"replacement DOCX has no body segments: {replacement_path}")
         start, end = replacement_segments[0]
-        replacements[page_index] = [
+        replacement_elements = [
             deepcopy(element)
             for element in list(replacement_body)[start:end]
         ]
+        target_start, target_end = segments[page_index]
+        replacements[page_index] = _with_target_segment_boundary(
+            replacement_elements,
+            target_children[target_start:target_end],
+        )
 
     new_children = []
     for page_index, (start, end) in enumerate(segments):

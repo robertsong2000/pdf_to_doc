@@ -2,12 +2,14 @@
 
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
+from lxml import etree
 from docx import Document
 from docx.enum.section import WD_SECTION
 
-from pdf2docx_fallback import detect_page_frame_table_pages, replace_docx_pages
+from pdf2docx_fallback import NS, detect_page_frame_table_pages, replace_docx_pages
 
 
 def _add_large_table(document, prefix: str) -> None:
@@ -63,6 +65,38 @@ class PageFrameFallbackTests(unittest.TestCase):
             self.assertIn("page two replacement", text)
             self.assertIn("page three stays", text)
             self.assertNotIn("bad page cell", text)
+
+    def test_replace_docx_pages_preserves_target_page_boundary(self):
+        target = Document()
+        target.add_paragraph("page one stays")
+        target.add_section(WD_SECTION.NEW_PAGE)
+        _add_large_table(target, "bad page")
+        target.add_section(WD_SECTION.NEW_PAGE)
+        target.add_paragraph("page three stays")
+
+        replacement = Document()
+        replacement.add_paragraph("page two replacement")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            target_path = Path(tmp_dir) / "target.docx"
+            replacement_path = Path(tmp_dir) / "replacement.docx"
+            target.save(target_path)
+            replacement.save(replacement_path)
+
+            with zipfile.ZipFile(target_path, "r") as docx_zip:
+                target_root = etree.fromstring(docx_zip.read("word/document.xml"))
+            target_body = target_root.find("w:body", NS)
+            original_boundary = etree.tostring(list(target_body)[3])
+
+            replace_docx_pages(target_path, {1: replacement_path})
+
+            with zipfile.ZipFile(target_path, "r") as docx_zip:
+                cleaned_root = etree.fromstring(docx_zip.read("word/document.xml"))
+            cleaned_body = cleaned_root.find("w:body", NS)
+            cleaned_children = list(cleaned_body)
+
+            self.assertEqual(etree.tostring(cleaned_children[3]), original_boundary)
+            self.assertNotEqual(cleaned_children[3].tag, f"{{{NS['w']}}}sectPr")
 
 
 if __name__ == "__main__":
