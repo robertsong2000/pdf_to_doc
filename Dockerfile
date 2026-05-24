@@ -4,7 +4,7 @@ ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
 ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 ARG PIP_DEFAULT_TIMEOUT=120
 ARG PIP_RETRIES=10
-ARG PDF2DOCX_PACKAGE=git+https://github.com/robertsong2000/pdf2docx.git@5a9a4ea0e5a64fe317622c00afa2f17c8a1c4e4a
+ARG PDF2DOCX_PACKAGE=git+https://github.com/robertsong2000/pdf2docx.git@c8ef815b92f447a0331f031cb8e70ddf63b5fd6b
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \

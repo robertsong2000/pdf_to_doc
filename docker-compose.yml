@@ -7,7 +7,7 @@ services:
         PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-mirrors.aliyun.com}
         PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-120}
         PIP_RETRIES: ${PIP_RETRIES:-10}
-        PDF2DOCX_PACKAGE: ${PDF2DOCX_PACKAGE:-git+https://github.com/robertsong2000/pdf2docx.git@5a9a4ea0e5a64fe317622c00afa2f17c8a1c4e4a}
+        PDF2DOCX_PACKAGE: ${PDF2DOCX_PACKAGE:-git+https://github.com/robertsong2000/pdf2docx.git@c8ef815b92f447a0331f031cb8e70ddf63b5fd6b}
     ports:
       - "5501:5000"
     environment:
