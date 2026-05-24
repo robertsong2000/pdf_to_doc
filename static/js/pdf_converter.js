@@ -210,7 +210,7 @@ function resetUpload() {
     if (replaceOemInfoInput) replaceOemInfoInput.checked = true;
     if (largePdfNotice) {
         largePdfNotice.classList.remove('strong');
-        largePdfNotice.textContent = '大文件建议拆页转换，例如按 200-300 页一段转换，最多不超过 500 页；一次转换几千页可能占用大量内存并导致任务失败。';
+        largePdfNotice.textContent = '大文件建议拆页转换，例如按 200-300 页一段转换；一次转换几千页可能占用大量内存并导致任务失败。';
     }
 
     resetProgress();
@@ -575,10 +575,10 @@ async function fetchPdfPageCount(file) {
             if (largePdfNotice) {
                 if (pdfTotalPages > 500) {
                     largePdfNotice.classList.add('strong');
-                    largePdfNotice.textContent = `该PDF共 ${pdfTotalPages} 页，属于超长文档。建议选择“指定页码”，按 200-300 页一段分段转换，最多不超过 500 页，避免一次转换占用过多内存导致失败。`;
+                    largePdfNotice.textContent = `该PDF共 ${pdfTotalPages} 页，属于超长文档。建议选择“指定页码”，按 200-300 页一段分段转换，避免一次转换占用过多内存导致失败。`;
                 } else {
                     largePdfNotice.classList.remove('strong');
-                    largePdfNotice.textContent = '大文件建议拆页转换，例如按 200-300 页一段转换，最多不超过 500 页；一次转换几千页可能占用大量内存并导致任务失败。';
+                    largePdfNotice.textContent = '大文件建议拆页转换，例如按 200-300 页一段转换；一次转换几千页可能占用大量内存并导致任务失败。';
                 }
             }
         }
