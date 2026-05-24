@@ -222,6 +222,24 @@ body {
     border-left: 4px solid #667eea;
 }
 
+.large-pdf-notice {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: #fff8e6;
+    border: 1px solid #ffe3a3;
+    border-radius: 8px;
+    color: #7a5200;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.large-pdf-notice.strong {
+    background: #fff3cd;
+    border-color: #ffc107;
+    color: #684700;
+    font-weight: 600;
+}
+
 /* Download */
 .download-btn {
     background: #28a745;

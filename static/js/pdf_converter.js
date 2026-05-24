@@ -35,6 +35,7 @@ const resolvedRangeText = document.getElementById('resolvedRangeText');
 const resolvedRangeError = document.getElementById('resolvedRangeError');
 const removeHeadersInput = document.getElementById('removeHeaders');
 const replaceOemInfoInput = document.getElementById('replaceOemInfo');
+const largePdfNotice = document.getElementById('largePdfNotice');
 
 let resolvedStartPage = null;
 let resolvedEndPage = null;
@@ -207,6 +208,10 @@ function resetUpload() {
     if (resolvedRangeError) resolvedRangeError.style.display = 'none';
     if (removeHeadersInput) removeHeadersInput.checked = true;
     if (replaceOemInfoInput) replaceOemInfoInput.checked = true;
+    if (largePdfNotice) {
+        largePdfNotice.classList.remove('strong');
+        largePdfNotice.textContent = '大文件建议拆页转换，例如按 500 页一段转换；一次转换几千页可能占用大量内存并导致任务失败。';
+    }
 
     resetProgress();
 }
@@ -566,6 +571,16 @@ async function fetchPdfPageCount(file) {
                 else pageRangeContainer.appendChild(hint);
             }
             hint.textContent = `该PDF共 ${pdfTotalPages} 页`;
+
+            if (largePdfNotice) {
+                if (pdfTotalPages > 500) {
+                    largePdfNotice.classList.add('strong');
+                    largePdfNotice.textContent = `该PDF共 ${pdfTotalPages} 页，属于超长文档。建议选择“指定页码”，按 500 页左右分段转换，避免一次转换占用过多内存导致失败。`;
+                } else {
+                    largePdfNotice.classList.remove('strong');
+                    largePdfNotice.textContent = '大文件建议拆页转换，例如按 500 页一段转换；一次转换几千页可能占用大量内存并导致任务失败。';
+                }
+            }
         }
     } catch (e) {
         console.warn('Failed to get page count:', e);
